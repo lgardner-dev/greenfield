@@ -1,0 +1,7 @@
+function(greenfield_enable_warnings targetName)
+    if(MSVC)
+        target_compile_options(${targetName} PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(${targetName} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()

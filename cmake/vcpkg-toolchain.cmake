@@ -1,0 +1,12 @@
+include_guard(GLOBAL)
+
+if(DEFINED ENV{VCPKG_ROOT})
+    set(_greenfield_vcpkg_toolchain "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+    if(EXISTS "${_greenfield_vcpkg_toolchain}")
+        include("${_greenfield_vcpkg_toolchain}")
+    else()
+        message(STATUS "VCPKG_ROOT is set but the vcpkg toolchain file was not found at ${_greenfield_vcpkg_toolchain}. Continuing without vcpkg.")
+    endif()
+else()
+    message(STATUS "VCPKG_ROOT is not set. Continuing without the vcpkg toolchain.")
+endif()
