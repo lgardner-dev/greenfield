@@ -1,5 +1,6 @@
 #include "engine/platform/SdlWindow.h"
 
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
 
@@ -7,24 +8,53 @@
 
 namespace greenfield
 {
+namespace
+{
+
+std::size_t SdlVideoUserCount = 0;
+
+void InitializeSdlVideo()
+{
+    if (SdlVideoUserCount == 0 && !SDL_Init(SDL_INIT_VIDEO))
+    {
+        throw std::runtime_error(SDL_GetError());
+    }
+
+    ++SdlVideoUserCount;
+}
+
+void QuitSdlVideo()
+{
+    if (SdlVideoUserCount == 0)
+    {
+        return;
+    }
+
+    --SdlVideoUserCount;
+    if (SdlVideoUserCount == 0)
+    {
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    }
+}
+
+} // namespace
 
 SdlWindow::SdlWindow(std::string title, int width, int height)
     : _title(std::move(title))
     , _width(width)
     , _height(height)
 {
-    if (!SDL_Init(SDL_INIT_VIDEO))
-    {
-        throw std::runtime_error(SDL_GetError());
-    }
+    InitializeSdlVideo();
 
     _window = SDL_CreateWindow(_title.c_str(), _width, _height, SDL_WINDOW_RESIZABLE);
     if (_window == nullptr)
     {
         const std::string errorMessage = SDL_GetError();
-        SDL_Quit();
+        QuitSdlVideo();
         throw std::runtime_error(errorMessage);
     }
+
+    UpdateWindowSize();
 }
 
 SdlWindow::~SdlWindow()
@@ -35,7 +65,7 @@ SdlWindow::~SdlWindow()
         _window = nullptr;
     }
 
-    SDL_Quit();
+    QuitSdlVideo();
 }
 
 void SdlWindow::PollEvents()
@@ -75,9 +105,14 @@ int SdlWindow::GetHeight() const noexcept
     return _height;
 }
 
+SDL_Window* SdlWindow::GetNativeWindow() const noexcept
+{
+    return _window;
+}
+
 void SdlWindow::UpdateWindowSize()
 {
-    SDL_GetWindowSize(_window, &_width, &_height);
+    SDL_GetWindowSizeInPixels(_window, &_width, &_height);
 }
 
 } // namespace greenfield

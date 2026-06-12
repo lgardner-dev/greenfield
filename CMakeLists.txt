@@ -27,6 +27,8 @@ else()
     set(GREENFIELD_SDL3_TARGET SDL3::SDL3)
 endif()
 
+find_package(Dawn CONFIG REQUIRED)
+
 add_library(greenfield_core INTERFACE)
 target_include_directories(greenfield_core INTERFACE "${PROJECT_SOURCE_DIR}")
 target_compile_features(greenfield_core INTERFACE cxx_std_20)
@@ -54,7 +56,7 @@ add_library(greenfield_webgpu
     engine/render/webgpu/WebGpuRenderer.cpp
 )
 target_include_directories(greenfield_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform)
+target_link_libraries(greenfield_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn)
 greenfield_enable_warnings(greenfield_webgpu)
 
 add_executable(greenfield_sandbox

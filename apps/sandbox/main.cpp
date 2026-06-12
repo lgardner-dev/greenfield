@@ -1,5 +1,7 @@
+#include <chrono>
 #include <exception>
 #include <iostream>
+#include <thread>
 
 #include "engine/core/Color.h"
 #include "engine/core/Rect.h"
@@ -79,6 +81,8 @@ int main()
             const auto& renderCommands = uiContext.EndFrame();
             renderer.Submit(renderCommands);
             renderer.EndFrame();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
 
         return 0;

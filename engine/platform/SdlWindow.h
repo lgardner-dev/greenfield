@@ -24,6 +24,7 @@ public:
     [[nodiscard]] bool ShouldClose() const noexcept override;
     [[nodiscard]] int GetWidth() const noexcept override;
     [[nodiscard]] int GetHeight() const noexcept override;
+    [[nodiscard]] SDL_Window* GetNativeWindow() const noexcept;
 
 private:
     void UpdateWindowSize();
