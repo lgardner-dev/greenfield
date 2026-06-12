@@ -1,12 +1,14 @@
 # Greenfield
 
-Greenfield is a UI-first C++20 engine skeleton for desktop applications.
+Greenfield is an open-source, general-purpose C++20 UI-first engine for polished cross-platform application UIs.
+
+The engine is built around WebGPU-first rendering, an SDL3 platform layer, and renderer-agnostic UI commands so applications can keep UI code independent from backend details.
 
 ## Current Scope
 
-- SDL3 windowing and input
+- SDL3 windowing and input through a small platform layer
 - A renderer-agnostic UI command layer
-- A WebGPU renderer stub with clean ownership boundaries
+- WebGPU-first rendering with clean ownership boundaries
 - CMake with Ninja presets
 - vcpkg manifest-mode as the default dependency path
 

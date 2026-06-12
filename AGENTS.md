@@ -1,6 +1,6 @@
 # Greenfield Agent Instructions
 
-This repository is the Greenfield UI engine, a C++20 UI-first engine intended to power the Omnivity router management UI and future UI-heavy applications.
+This repository is the Greenfield UI engine, a C++20 UI-first engine for polished cross-platform application UIs.
 
 When modifying this repository, follow the coding standards in `docs/coding-standards.md`.
 

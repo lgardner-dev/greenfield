@@ -139,7 +139,7 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool
         .itemSize = Vec2{cardWidth, 102.0f},
     });
 
-    if (uiContext.Button("first-card", "Router", GetCardButtonStyle(firstSelected)))
+    if (uiContext.Button("first-card", "Overview", GetCardButtonStyle(firstSelected)))
     {
         firstSelected = !firstSelected;
     }
