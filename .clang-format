@@ -1,0 +1,10 @@
+BasedOnStyle: Microsoft
+AccessModifierOffset: -4
+BinPackArguments: false
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: 0
+IndentWidth: 4
+PackConstructorInitializers: Never
+PointerAlignment: Left
+ReferenceAlignment: Left
+ReflowComments: false

@@ -15,7 +15,14 @@ namespace
 [[nodiscard]] bool ColorsMatch(const greenfield::Color& firstColor, const greenfield::Color& secondColor)
 {
     return firstColor.red == secondColor.red && firstColor.green == secondColor.green &&
-        firstColor.blue == secondColor.blue && firstColor.alpha == secondColor.alpha;
+           firstColor.blue == secondColor.blue && firstColor.alpha == secondColor.alpha;
+}
+
+[[nodiscard]] bool RectanglesMatch(const greenfield::Rect& firstRectangle, const greenfield::Rect& secondRectangle)
+{
+    return firstRectangle.position.x == secondRectangle.position.x &&
+           firstRectangle.position.y == secondRectangle.position.y && firstRectangle.size.x == secondRectangle.size.x &&
+           firstRectangle.size.y == secondRectangle.size.y;
 }
 
 } // namespace
@@ -50,6 +57,85 @@ int main()
 
     const Style style{};
     if (layout.bounds.size.x <= 0.0f || style.accent.alpha <= 0.0f)
+    {
+        return EXIT_FAILURE;
+    }
+
+    UiContext layoutContext;
+    layoutContext.BeginFrame(layout);
+    layoutContext.BeginColumn(LayoutContainer{
+        .bounds =
+            Rect{
+                .position = Vec2{10.0f, 10.0f},
+                .size = Vec2{200.0f, 160.0f},
+            },
+        .padding = 8.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{50.0f, 20.0f},
+    });
+    layoutContext.Panel(style.panelBackground);
+    layoutContext.Panel(style.panelBackground);
+    layoutContext.EndColumn();
+
+    const auto& columnCommands = layoutContext.EndFrame();
+    if (columnCommands.Size() != 2U)
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(columnCommands.Commands()[0].rectangle,
+                         Rect{
+                             .position = Vec2{18.0f, 18.0f},
+                             .size = Vec2{50.0f, 20.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(columnCommands.Commands()[1].rectangle,
+                         Rect{
+                             .position = Vec2{18.0f, 44.0f},
+                             .size = Vec2{50.0f, 20.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    layoutContext.BeginFrame(layout);
+    layoutContext.BeginRow(LayoutContainer{
+        .bounds =
+            Rect{
+                .position = Vec2{0.0f, 0.0f},
+                .size = Vec2{200.0f, 80.0f},
+            },
+        .padding = 5.0f,
+        .gap = 7.0f,
+        .itemSize = Vec2{30.0f, 40.0f},
+    });
+    layoutContext.Panel(style.panelBackground);
+    layoutContext.Panel(style.panelBackground);
+    layoutContext.EndRow();
+
+    const auto& rowCommands = layoutContext.EndFrame();
+    if (rowCommands.Size() != 2U)
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(rowCommands.Commands()[0].rectangle,
+                         Rect{
+                             .position = Vec2{5.0f, 5.0f},
+                             .size = Vec2{30.0f, 40.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(rowCommands.Commands()[1].rectangle,
+                         Rect{
+                             .position = Vec2{42.0f, 5.0f},
+                             .size = Vec2{30.0f, 40.0f},
+                         }))
     {
         return EXIT_FAILURE;
     }
@@ -89,13 +175,12 @@ int main()
         return EXIT_FAILURE;
     }
 
-    uiContext.BeginFrame(
-        layout,
-        InputState{
-            .mousePosition = Vec2{20.0f, 30.0f},
-            .leftMouseButtonDown = true,
-            .leftMouseButtonPressed = true,
-        });
+    uiContext.BeginFrame(layout,
+                         InputState{
+                             .mousePosition = Vec2{20.0f, 30.0f},
+                             .leftMouseButtonDown = true,
+                             .leftMouseButtonPressed = true,
+                         });
     if (uiContext.Button("test-button", testRectangle, buttonStyle))
     {
         return EXIT_FAILURE;
@@ -107,13 +192,67 @@ int main()
         return EXIT_FAILURE;
     }
 
-    uiContext.BeginFrame(
-        layout,
-        InputState{
-            .mousePosition = Vec2{20.0f, 30.0f},
-            .leftMouseButtonReleased = true,
-        });
+    uiContext.BeginFrame(layout,
+                         InputState{
+                             .mousePosition = Vec2{20.0f, 30.0f},
+                             .leftMouseButtonReleased = true,
+                         });
     if (!uiContext.Button("test-button", testRectangle, buttonStyle))
+    {
+        return EXIT_FAILURE;
+    }
+
+    UiContext layoutButtonContext;
+    layoutButtonContext.BeginFrame(layout,
+                                   InputState{
+                                       .mousePosition = Vec2{20.0f, 20.0f},
+                                       .leftMouseButtonDown = true,
+                                       .leftMouseButtonPressed = true,
+                                   });
+    layoutButtonContext.BeginColumn(LayoutContainer{
+        .bounds =
+            Rect{
+                .position = Vec2{0.0f, 0.0f},
+                .size = Vec2{200.0f, 100.0f},
+            },
+        .padding = 10.0f,
+        .itemSize = Vec2{80.0f, 40.0f},
+    });
+    if (layoutButtonContext.Button("layout-button", buttonStyle))
+    {
+        return EXIT_FAILURE;
+    }
+
+    const auto& layoutPressedCommands = layoutButtonContext.EndFrame();
+    if (!RectanglesMatch(layoutPressedCommands.Commands()[0].rectangle,
+                         Rect{
+                             .position = Vec2{10.0f, 10.0f},
+                             .size = Vec2{80.0f, 40.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!ColorsMatch(layoutPressedCommands.Commands()[0].color, buttonStyle.pressed))
+    {
+        return EXIT_FAILURE;
+    }
+
+    layoutButtonContext.BeginFrame(layout,
+                                   InputState{
+                                       .mousePosition = Vec2{20.0f, 20.0f},
+                                       .leftMouseButtonReleased = true,
+                                   });
+    layoutButtonContext.BeginColumn(LayoutContainer{
+        .bounds =
+            Rect{
+                .position = Vec2{0.0f, 0.0f},
+                .size = Vec2{200.0f, 100.0f},
+            },
+        .padding = 10.0f,
+        .itemSize = Vec2{80.0f, 40.0f},
+    });
+    if (!layoutButtonContext.Button("layout-button", buttonStyle))
     {
         return EXIT_FAILURE;
     }

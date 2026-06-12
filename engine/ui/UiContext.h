@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "engine/input/InputState.h"
 #include "engine/render/RenderCommandList.h"
@@ -23,7 +24,18 @@ class UiContext
 public:
     void BeginFrame(const Layout& layout);
     void BeginFrame(const Layout& layout, const InputState& inputState);
+    void BeginColumn(const LayoutContainer& container);
+    void EndColumn();
+    void BeginRow(const LayoutContainer& container);
+    void EndRow();
+    void AddSpacing(float spacing);
     void DrawFilledRectangle(const Rect& rectangle, const Color& color, float cornerRadius = 0.0f);
+    void Panel(const Rect& bounds, const Color& color, float cornerRadius = 0.0f);
+    Rect Panel(const Color& color, float cornerRadius = 0.0f);
+    Rect Panel(const Color& color, const Vec2& itemSize, float cornerRadius = 0.0f);
+    [[nodiscard]] bool Button(const std::string& name);
+    [[nodiscard]] bool Button(const std::string& name, const ButtonStyle& buttonStyle);
+    [[nodiscard]] bool Button(const std::string& name, const Vec2& itemSize, const ButtonStyle& buttonStyle);
     [[nodiscard]] bool Button(const std::string& name, const Rect& bounds);
     [[nodiscard]] bool Button(const std::string& name, const Rect& bounds, const ButtonStyle& buttonStyle);
     [[nodiscard]] const RenderCommandList& EndFrame();
@@ -33,16 +45,30 @@ public:
     [[nodiscard]] const Layout& GetLayout() const noexcept;
 
 private:
+    struct LayoutFrame
+    {
+        LayoutDirection direction{LayoutDirection::Column};
+        Rect contentBounds{};
+        Vec2 cursor{};
+        float gap{0.0f};
+        Vec2 itemSize{};
+    };
+
+    void BeginLayoutContainer(const LayoutContainer& container, LayoutDirection direction);
+    void EndLayoutContainer(LayoutDirection direction);
+    [[nodiscard]] Rect GetNextLayoutBounds(const Vec2& requestedItemSize);
+    [[nodiscard]] Rect GetContentBounds(const LayoutContainer& container) const noexcept;
+    [[nodiscard]] Vec2 ResolveItemSize(const LayoutFrame& frame, const Vec2& requestedItemSize) const noexcept;
+    void AdvanceLayoutCursor(LayoutFrame& frame, const Vec2& itemSize) noexcept;
     [[nodiscard]] bool IsButtonActive(const std::string& name) const;
-    [[nodiscard]] Color GetButtonColor(
-        const std::string& name,
-        const Rect& bounds,
-        const ButtonStyle& buttonStyle) const;
+    [[nodiscard]] Color GetButtonColor(const std::string& name, const Rect& bounds,
+                                       const ButtonStyle& buttonStyle) const;
 
     Style _style{};
     Layout _layout{};
     InputState _inputState{};
     std::string _activeButtonName{};
+    std::vector<LayoutFrame> _layoutStack{};
     RenderCommandList _renderCommands{};
 };
 
