@@ -41,13 +41,21 @@ int main()
     const Color commandFillColor{0.25f, 0.5f, 0.75f, 0.8f};
     const Color commandBorderColor{0.75f, 0.85f, 0.95f, 0.5f};
     renderCommands.AddFillRectangle(bounds, commandFillColor, 6.0f, commandBorderColor, 2.0f);
+    renderCommands.AddText("Hello", Rect{.position = Vec2{4.0f, 8.0f}, .size = Vec2{120.0f, 32.0f}}, 18.0f, commandFillColor);
 
-    if (renderCommands.Size() != 1U)
+    if (renderCommands.Size() != 2U)
     {
         return EXIT_FAILURE;
     }
 
     if (renderCommands.Commands()[0].cornerRadius != 6.0f)
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (renderCommands.Commands()[1].type != RenderCommandType::DrawText ||
+        renderCommands.Commands()[1].text != "Hello" || renderCommands.Commands()[1].fontSize != 18.0f ||
+        !ColorsMatch(renderCommands.Commands()[1].textColor, commandFillColor))
     {
         return EXIT_FAILURE;
     }
@@ -65,8 +73,8 @@ int main()
     };
 
     const Style style{};
-    if (layout.bounds.size.x <= 0.0f || style.accent.alpha <= 0.0f || style.panelCornerRadius <= 0.0f ||
-        style.panelBorderThickness <= 0.0f || style.panelBackground.alpha >= 1.0f)
+    if (layout.bounds.size.x <= 0.0f || style.accent.alpha <= 0.0f || style.textPrimary.alpha <= 0.0f ||
+        style.panelCornerRadius <= 0.0f || style.panelBorderThickness <= 0.0f || style.panelBackground.alpha >= 1.0f)
     {
         return EXIT_FAILURE;
     }
@@ -145,6 +153,34 @@ int main()
                          Rect{
                              .position = Vec2{42.0f, 5.0f},
                              .size = Vec2{30.0f, 40.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    UiContext textLayoutContext;
+    textLayoutContext.BeginFrame(layout);
+    textLayoutContext.BeginColumn(LayoutContainer{
+        .bounds =
+            Rect{
+                .position = Vec2{4.0f, 6.0f},
+                .size = Vec2{260.0f, 120.0f},
+            },
+        .padding = 10.0f,
+        .gap = 8.0f,
+        .itemSize = Vec2{140.0f, 26.0f},
+    });
+    textLayoutContext.Text("Layout text", Vec2{140.0f, 26.0f}, 18.0f, style.textPrimary);
+    const auto& textCommands = textLayoutContext.EndFrame();
+    if (textCommands.Size() != 1U || textCommands.Commands()[0].type != RenderCommandType::DrawText)
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(textCommands.Commands()[0].rectangle,
+                         Rect{
+                             .position = Vec2{14.0f, 16.0f},
+                             .size = Vec2{140.0f, 26.0f},
                          }))
     {
         return EXIT_FAILURE;

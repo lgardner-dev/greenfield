@@ -32,6 +32,17 @@ public:
         });
     }
 
+    void AddText(const std::string& text, const Rect& bounds, float fontSize, const Color& color)
+    {
+        _commands.push_back(RenderCommand{
+            .type = RenderCommandType::DrawText,
+            .rectangle = bounds,
+            .text = text,
+            .fontSize = fontSize,
+            .textColor = color,
+        });
+    }
+
     void Append(const RenderCommandList& other)
     {
         _commands.insert(_commands.end(), other._commands.begin(), other._commands.end());

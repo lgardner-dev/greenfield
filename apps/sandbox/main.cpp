@@ -1,6 +1,8 @@
 #include <chrono>
 #include <exception>
+#include <filesystem>
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include "engine/core/Color.h"
@@ -53,6 +55,32 @@ RectangleStyle GetPanelStyle(const Style& style)
     };
 }
 
+std::string FindDefaultFontPath()
+{
+    const std::filesystem::path assetFontPath{"assets/fonts/Greenfield-Regular.ttf"};
+    if (std::filesystem::exists(assetFontPath))
+    {
+        return assetFontPath.string();
+    }
+
+    const std::filesystem::path systemFontPath{"/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf"};
+    if (std::filesystem::exists(systemFontPath))
+    {
+        return systemFontPath.string();
+    }
+
+    return {};
+}
+
+std::string GetSelectedCardSummary(bool firstSelected, bool secondSelected, bool thirdSelected)
+{
+    int selectedCount = 0;
+    selectedCount += firstSelected ? 1 : 0;
+    selectedCount += secondSelected ? 1 : 0;
+    selectedCount += thirdSelected ? 1 : 0;
+    return std::to_string(selectedCount) + " of 3 selected";
+}
+
 void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool& firstSelected, bool& secondSelected,
                    bool& thirdSelected)
 {
@@ -64,6 +92,8 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool
         .size = Vec2{rootPanelWidth, rootPanelHeight},
     };
     uiContext.Panel(rootPanel, GetPanelStyle(style));
+    uiContext.DrawText("Greenfield", Rect{.position = Vec2{rootPanel.position.x + 24.0f, rootPanel.position.y + 20.0f}, .size = Vec2{360.0f, 42.0f}}, 34.0f, style.textPrimary);
+    uiContext.DrawText("UI engine sandbox", Rect{.position = Vec2{rootPanel.position.x + 26.0f, rootPanel.position.y + 62.0f}, .size = Vec2{360.0f, 26.0f}}, 18.0f, style.textSecondary);
 
     uiContext.Panel(Rect{
                         .position = Vec2{rootPanel.position.x + rootPanel.size.x - 176.0f, rootPanel.position.y + 24.0f},
@@ -82,6 +112,7 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool
         .gap = 18.0f,
     });
 
+    uiContext.AddSpacing(74.0f);
     uiContext.Panel(RectangleStyle{
                         .fillColor = style.accent,
                         .cornerRadius = 10.0f,
@@ -108,17 +139,17 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool
         .itemSize = Vec2{cardWidth, 102.0f},
     });
 
-    if (uiContext.Button("first-card", GetCardButtonStyle(firstSelected)))
+    if (uiContext.Button("first-card", "Router", GetCardButtonStyle(firstSelected)))
     {
         firstSelected = !firstSelected;
     }
 
-    if (uiContext.Button("second-card", GetCardButtonStyle(secondSelected)))
+    if (uiContext.Button("second-card", "Wireless", GetCardButtonStyle(secondSelected)))
     {
         secondSelected = !secondSelected;
     }
 
-    if (uiContext.Button("third-card", GetCardButtonStyle(thirdSelected)))
+    if (uiContext.Button("third-card", "Security", GetCardButtonStyle(thirdSelected)))
     {
         thirdSelected = !thirdSelected;
     }
@@ -146,12 +177,20 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool
                         .borderThickness = 1.0f,
                     },
                     Vec2{detailPanel.size.x * 0.58f, 28.0f});
+    uiContext.DrawText("Status", Rect{.position = Vec2{detailPanel.position.x + 28.0f, detailPanel.position.y + 16.0f}, .size = Vec2{100.0f, 28.0f}}, 18.0f, Color{0.07f, 0.13f, 0.11f, 1.0f});
+    uiContext.DrawText("Ready", Rect{.position = Vec2{detailPanel.position.x + 136.0f, detailPanel.position.y + 16.0f}, .size = Vec2{160.0f, 28.0f}}, 18.0f, Color{0.06f, 0.12f, 0.10f, 1.0f});
     uiContext.Panel(RectangleStyle{
         .fillColor = Color{0.26f, 0.38f, 0.58f, 0.72f},
         .cornerRadius = 9.0f,
         .borderColor = Color{0.54f, 0.68f, 0.88f, 0.30f},
         .borderThickness = 1.0f,
     });
+    uiContext.DrawText("Selected cards", Rect{.position = Vec2{detailPanel.position.x + 28.0f, detailPanel.position.y + 56.0f}, .size = Vec2{160.0f, 28.0f}}, 18.0f, style.textPrimary);
+    uiContext.DrawText(GetSelectedCardSummary(firstSelected, secondSelected, thirdSelected),
+                       Rect{.position = Vec2{detailPanel.position.x + 196.0f, detailPanel.position.y + 56.0f},
+                            .size = Vec2{220.0f, 28.0f}},
+                       18.0f,
+                       style.textPrimary);
     uiContext.AddSpacing(2.0f);
     uiContext.Panel(RectangleStyle{
                         .fillColor = Color{0.34f, 0.60f, 0.95f, 0.82f},
@@ -160,6 +199,8 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight, bool
                         .borderThickness = 1.0f,
                     },
                     Vec2{detailPanel.size.x * 0.72f, 28.0f});
+    uiContext.DrawText("Renderer", Rect{.position = Vec2{detailPanel.position.x + 28.0f, detailPanel.position.y + 100.0f}, .size = Vec2{120.0f, 28.0f}}, 18.0f, Color{0.05f, 0.08f, 0.13f, 1.0f});
+    uiContext.DrawText("WebGPU text path", Rect{.position = Vec2{detailPanel.position.x + 156.0f, detailPanel.position.y + 100.0f}, .size = Vec2{240.0f, 28.0f}}, 18.0f, Color{0.05f, 0.08f, 0.13f, 1.0f});
     uiContext.EndColumn();
 
     uiContext.EndColumn();
@@ -186,7 +227,17 @@ int main()
         }
 
         WebGpuContext webGpuContext{window};
-        WebGpuRenderer renderer{webGpuContext};
+        const std::string defaultFontPath = FindDefaultFontPath();
+        if (defaultFontPath.empty())
+        {
+            std::cerr << "No default font found. Text commands will be recorded, but text will not render.\n";
+        }
+        else
+        {
+            std::cout << "Using sandbox font: " << defaultFontPath << '\n';
+        }
+
+        WebGpuRenderer renderer{webGpuContext, defaultFontPath};
         UiContext uiContext;
 
         const Style style{};

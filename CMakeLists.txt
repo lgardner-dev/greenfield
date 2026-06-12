@@ -28,6 +28,7 @@ else()
 endif()
 
 find_package(Dawn CONFIG REQUIRED)
+find_package(Freetype REQUIRED)
 
 add_library(greenfield_core INTERFACE)
 target_include_directories(greenfield_core INTERFACE "${PROJECT_SOURCE_DIR}")
@@ -57,7 +58,7 @@ add_library(greenfield_webgpu
     engine/render/webgpu/WebGpuRenderer.cpp
 )
 target_include_directories(greenfield_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn)
+target_link_libraries(greenfield_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
 greenfield_enable_warnings(greenfield_webgpu)
 
 add_executable(greenfield_sandbox

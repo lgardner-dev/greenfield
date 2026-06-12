@@ -7,6 +7,8 @@ namespace
 {
 
 constexpr Vec2 DefaultLayoutItemSize{160.0f, 48.0f};
+constexpr float DefaultTextFontSize{18.0f};
+constexpr float ButtonHorizontalTextInset{16.0f};
 
 } // namespace
 
@@ -81,6 +83,33 @@ void UiContext::DrawRectangle(const Rect& rectangle, const RectangleStyle& recta
     _renderCommands.AddFillRectangle(rectangle, rectangleStyle.fillColor, rectangleStyle.cornerRadius, rectangleStyle.borderColor, rectangleStyle.borderThickness);
 }
 
+void UiContext::DrawText(const std::string& text, const Rect& bounds, float fontSize, const Color& color)
+{
+    if (text.empty() || bounds.size.x <= 0.0f || bounds.size.y <= 0.0f || fontSize <= 0.0f || color.alpha <= 0.0f)
+    {
+        return;
+    }
+
+    _renderCommands.AddText(text, bounds, fontSize, color);
+}
+
+Rect UiContext::Text(const std::string& text)
+{
+    return Text(text, DefaultTextFontSize, _style.textPrimary);
+}
+
+Rect UiContext::Text(const std::string& text, float fontSize, const Color& color)
+{
+    return Text(text, Vec2{0.0f, fontSize * 1.4f}, fontSize, color);
+}
+
+Rect UiContext::Text(const std::string& text, const Vec2& itemSize, float fontSize, const Color& color)
+{
+    const Rect bounds = GetNextLayoutBounds(itemSize);
+    DrawText(text, bounds, fontSize, color);
+    return bounds;
+}
+
 void UiContext::Panel(const Rect& bounds, const Color& color, float cornerRadius)
 {
     Panel(bounds,
@@ -127,27 +156,54 @@ Rect UiContext::Panel(const RectangleStyle& rectangleStyle, const Vec2& itemSize
 
 bool UiContext::Button(const std::string& name)
 {
-    return Button(name, ButtonStyle{.normal = _style.accent});
+    return Button(name, name);
+}
+
+bool UiContext::Button(const std::string& name, const std::string& label)
+{
+    return Button(name, label, ButtonStyle{.normal = _style.accent});
 }
 
 bool UiContext::Button(const std::string& name, const ButtonStyle& buttonStyle)
 {
+    return Button(name, name, buttonStyle);
+}
+
+bool UiContext::Button(const std::string& name, const std::string& label, const ButtonStyle& buttonStyle)
+{
     const Rect bounds = GetNextLayoutBounds(Vec2{});
-    return Button(name, bounds, buttonStyle);
+    return Button(name, label, bounds, buttonStyle);
 }
 
 bool UiContext::Button(const std::string& name, const Vec2& itemSize, const ButtonStyle& buttonStyle)
 {
+    return Button(name, name, itemSize, buttonStyle);
+}
+
+bool UiContext::Button(const std::string& name, const std::string& label, const Vec2& itemSize,
+                       const ButtonStyle& buttonStyle)
+{
     const Rect bounds = GetNextLayoutBounds(itemSize);
-    return Button(name, bounds, buttonStyle);
+    return Button(name, label, bounds, buttonStyle);
 }
 
 bool UiContext::Button(const std::string& name, const Rect& bounds)
 {
-    return Button(name, bounds, ButtonStyle{.normal = _style.accent});
+    return Button(name, name, bounds);
+}
+
+bool UiContext::Button(const std::string& name, const std::string& label, const Rect& bounds)
+{
+    return Button(name, label, bounds, ButtonStyle{.normal = _style.accent});
 }
 
 bool UiContext::Button(const std::string& name, const Rect& bounds, const ButtonStyle& buttonStyle)
+{
+    return Button(name, name, bounds, buttonStyle);
+}
+
+bool UiContext::Button(const std::string& name, const std::string& label, const Rect& bounds,
+                       const ButtonStyle& buttonStyle)
 {
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     if (isHovered && _inputState.leftMouseButtonPressed)
@@ -163,6 +219,7 @@ bool UiContext::Button(const std::string& name, const Rect& bounds, const Button
                       .borderColor = buttonStyle.border,
                       .borderThickness = buttonStyle.borderThickness,
                   });
+    DrawButtonLabel(label, bounds, buttonStyle);
 
     if (IsButtonActive(name) && _inputState.leftMouseButtonReleased)
     {
@@ -308,6 +365,24 @@ Color UiContext::GetButtonColor(const std::string& name, const Rect& bounds, con
     }
 
     return buttonStyle.normal;
+}
+
+void UiContext::DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle)
+{
+    const float labelTop = bounds.position.y + (bounds.size.y - buttonStyle.fontSize) * 0.5f - 2.0f;
+    const Rect labelBounds{
+        .position =
+            Vec2{
+                .x = bounds.position.x + ButtonHorizontalTextInset,
+                .y = labelTop,
+            },
+        .size =
+            Vec2{
+                .x = bounds.size.x - ButtonHorizontalTextInset * 2.0f,
+                .y = buttonStyle.fontSize * 1.4f,
+            },
+    };
+    DrawText(label, labelBounds, buttonStyle.fontSize, buttonStyle.textColor);
 }
 
 } // namespace greenfield

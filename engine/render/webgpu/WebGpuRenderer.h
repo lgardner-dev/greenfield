@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <dawn/webgpu_cpp.h>
@@ -16,11 +18,12 @@ class WebGpuContext;
 class WebGpuRenderer final : public IRenderer
 {
 public:
-    explicit WebGpuRenderer(WebGpuContext& context);
+    explicit WebGpuRenderer(WebGpuContext& context, std::string defaultFontPath = {});
 
     void BeginFrame() override;
     void Submit(const RenderCommandList& renderCommands) override;
     void EndFrame() override;
+    void SetDefaultFontPath(std::string fontPath);
 
     [[nodiscard]] std::size_t SubmittedCommandCount() const noexcept;
 
@@ -37,21 +40,74 @@ private:
         float borderThickness{0.0f};
     };
 
+    struct TextVertex
+    {
+        float position[2]{};
+        float textureCoordinate[2]{};
+        float color[4]{};
+    };
+
+    struct GlyphInfo
+    {
+        float textureLeft{0.0f};
+        float textureTop{0.0f};
+        float textureRight{0.0f};
+        float textureBottom{0.0f};
+        float width{0.0f};
+        float height{0.0f};
+        float bearingX{0.0f};
+        float bearingY{0.0f};
+        float advance{0.0f};
+    };
+
+    struct FontAtlas
+    {
+        wgpu::Texture texture;
+        wgpu::TextureView textureView;
+        wgpu::Sampler sampler;
+        wgpu::BindGroup bindGroup;
+        std::unordered_map<char, GlyphInfo> glyphs;
+        float lineHeight{0.0f};
+    };
+
+    struct TextBatch
+    {
+        wgpu::BindGroup bindGroup;
+        std::uint32_t firstVertex{0};
+        std::uint32_t vertexCount{0};
+    };
+
     void EnsureRectanglePipeline();
+    void EnsureTextPipeline();
+    [[nodiscard]] FontAtlas* GetOrCreateFontAtlas(float fontSize);
     [[nodiscard]] RectangleVertex MakeRectangleVertex(float clipPositionX, float clipPositionY, float pixelPositionX,
                                                       float pixelPositionY,
                                                       const RenderCommand& renderCommand) const noexcept;
+    [[nodiscard]] TextVertex MakeTextVertex(float pixelPositionX, float pixelPositionY, float textureCoordinateX,
+                                            float textureCoordinateY, const Color& color) const noexcept;
     void BuildRectangleVertices();
+    void AppendTextVertices(const RenderCommand& renderCommand, const FontAtlas& fontAtlas);
     void EnsureVertexBuffer(std::size_t requiredSize);
+    void EnsureTextVertexBuffer(std::size_t requiredSize);
     void DrawRectangles(wgpu::RenderPassEncoder& renderPass);
+    void DrawText(wgpu::RenderPassEncoder& renderPass);
 
     WebGpuContext* _context{nullptr};
     RenderCommandList _submittedCommands;
+    std::string _defaultFontPath;
     wgpu::RenderPipeline _rectanglePipeline;
+    wgpu::RenderPipeline _textPipeline;
+    wgpu::BindGroupLayout _textBindGroupLayout;
     wgpu::Buffer _rectangleVertexBuffer;
+    wgpu::Buffer _textVertexBuffer;
     wgpu::TextureFormat _rectanglePipelineFormat{wgpu::TextureFormat::Undefined};
+    wgpu::TextureFormat _textPipelineFormat{wgpu::TextureFormat::Undefined};
     std::vector<RectangleVertex> _rectangleVertices;
+    std::vector<TextVertex> _textVertices;
+    std::vector<TextBatch> _textBatches;
+    std::unordered_map<int, FontAtlas> _fontAtlases;
     std::uint64_t _rectangleVertexBufferSize{0};
+    std::uint64_t _textVertexBufferSize{0};
 };
 
 } // namespace greenfield

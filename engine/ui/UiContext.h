@@ -17,6 +17,8 @@ struct ButtonStyle
     Color hovered{0.40f, 0.72f, 0.96f, 1.0f};
     Color pressed{0.18f, 0.42f, 0.72f, 1.0f};
     Color border{0.68f, 0.78f, 0.92f, 0.35f};
+    Color textColor{0.94f, 0.98f, 1.0f, 1.0f};
+    float fontSize{18.0f};
     float cornerRadius{8.0f};
     float borderThickness{1.0f};
 };
@@ -41,6 +43,10 @@ public:
     void AddSpacing(float spacing);
     void DrawFilledRectangle(const Rect& rectangle, const Color& color, float cornerRadius = 0.0f);
     void DrawRectangle(const Rect& rectangle, const RectangleStyle& rectangleStyle);
+    void DrawText(const std::string& text, const Rect& bounds, float fontSize, const Color& color);
+    Rect Text(const std::string& text);
+    Rect Text(const std::string& text, float fontSize, const Color& color);
+    Rect Text(const std::string& text, const Vec2& itemSize, float fontSize, const Color& color);
     void Panel(const Rect& bounds, const Color& color, float cornerRadius = 0.0f);
     void Panel(const Rect& bounds, const RectangleStyle& rectangleStyle);
     Rect Panel(const Color& color, float cornerRadius = 0.0f);
@@ -48,10 +54,17 @@ public:
     Rect Panel(const RectangleStyle& rectangleStyle);
     Rect Panel(const RectangleStyle& rectangleStyle, const Vec2& itemSize);
     [[nodiscard]] bool Button(const std::string& name);
+    [[nodiscard]] bool Button(const std::string& name, const std::string& label);
     [[nodiscard]] bool Button(const std::string& name, const ButtonStyle& buttonStyle);
+    [[nodiscard]] bool Button(const std::string& name, const std::string& label, const ButtonStyle& buttonStyle);
     [[nodiscard]] bool Button(const std::string& name, const Vec2& itemSize, const ButtonStyle& buttonStyle);
+    [[nodiscard]] bool Button(const std::string& name, const std::string& label, const Vec2& itemSize,
+                              const ButtonStyle& buttonStyle);
     [[nodiscard]] bool Button(const std::string& name, const Rect& bounds);
+    [[nodiscard]] bool Button(const std::string& name, const std::string& label, const Rect& bounds);
     [[nodiscard]] bool Button(const std::string& name, const Rect& bounds, const ButtonStyle& buttonStyle);
+    [[nodiscard]] bool Button(const std::string& name, const std::string& label, const Rect& bounds,
+                              const ButtonStyle& buttonStyle);
     [[nodiscard]] const RenderCommandList& EndFrame();
 
     void SetStyle(const Style& style);
@@ -77,6 +90,7 @@ private:
     [[nodiscard]] bool IsButtonActive(const std::string& name) const;
     [[nodiscard]] Color GetButtonColor(const std::string& name, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
+    void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
 
     Style _style{};
     Layout _layout{};
