@@ -38,7 +38,9 @@ int main()
     };
 
     RenderCommandList renderCommands;
-    renderCommands.AddFillRectangle(bounds, Color{0.25f, 0.5f, 0.75f, 1.0f}, 6.0f);
+    const Color commandFillColor{0.25f, 0.5f, 0.75f, 0.8f};
+    const Color commandBorderColor{0.75f, 0.85f, 0.95f, 0.5f};
+    renderCommands.AddFillRectangle(bounds, commandFillColor, 6.0f, commandBorderColor, 2.0f);
 
     if (renderCommands.Size() != 1U)
     {
@@ -50,13 +52,21 @@ int main()
         return EXIT_FAILURE;
     }
 
+    if (!ColorsMatch(renderCommands.Commands()[0].fillColor, commandFillColor) ||
+        !ColorsMatch(renderCommands.Commands()[0].borderColor, commandBorderColor) ||
+        renderCommands.Commands()[0].borderThickness != 2.0f)
+    {
+        return EXIT_FAILURE;
+    }
+
     const Layout layout{
         .bounds = bounds,
         .padding = 12.0f,
     };
 
     const Style style{};
-    if (layout.bounds.size.x <= 0.0f || style.accent.alpha <= 0.0f)
+    if (layout.bounds.size.x <= 0.0f || style.accent.alpha <= 0.0f || style.panelCornerRadius <= 0.0f ||
+        style.panelBorderThickness <= 0.0f || style.panelBackground.alpha >= 1.0f)
     {
         return EXIT_FAILURE;
     }
@@ -170,7 +180,9 @@ int main()
     }
 
     const auto& hoverCommands = uiContext.EndFrame();
-    if (!ColorsMatch(hoverCommands.Commands()[0].color, buttonStyle.hovered))
+    if (!ColorsMatch(hoverCommands.Commands()[0].fillColor, buttonStyle.hovered) ||
+        !ColorsMatch(hoverCommands.Commands()[0].borderColor, buttonStyle.border) ||
+        hoverCommands.Commands()[0].borderThickness != buttonStyle.borderThickness)
     {
         return EXIT_FAILURE;
     }
@@ -187,7 +199,7 @@ int main()
     }
 
     const auto& pressedCommands = uiContext.EndFrame();
-    if (!ColorsMatch(pressedCommands.Commands()[0].color, buttonStyle.pressed))
+    if (!ColorsMatch(pressedCommands.Commands()[0].fillColor, buttonStyle.pressed))
     {
         return EXIT_FAILURE;
     }
@@ -233,7 +245,7 @@ int main()
         return EXIT_FAILURE;
     }
 
-    if (!ColorsMatch(layoutPressedCommands.Commands()[0].color, buttonStyle.pressed))
+    if (!ColorsMatch(layoutPressedCommands.Commands()[0].fillColor, buttonStyle.pressed))
     {
         return EXIT_FAILURE;
     }

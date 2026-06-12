@@ -31,25 +31,66 @@ const char* GetRectangleShaderSource()
     return R"(
 struct VertexInput {
     @location(0) position: vec2f,
-    @location(1) color: vec4f,
+    @location(1) pixelPosition: vec2f,
+    @location(2) rectanglePosition: vec2f,
+    @location(3) rectangleSize: vec2f,
+    @location(4) fillColor: vec4f,
+    @location(5) borderColor: vec4f,
+    @location(6) cornerRadius: f32,
+    @location(7) borderThickness: f32,
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) color: vec4f,
+    @location(0) pixelPosition: vec2f,
+    @location(1) rectanglePosition: vec2f,
+    @location(2) rectangleSize: vec2f,
+    @location(3) fillColor: vec4f,
+    @location(4) borderColor: vec4f,
+    @location(5) cornerRadius: f32,
+    @location(6) borderThickness: f32,
 };
 
 @vertex
 fn VertexMain(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.position = vec4f(input.position, 0.0, 1.0);
-    output.color = input.color;
+    output.pixelPosition = input.pixelPosition;
+    output.rectanglePosition = input.rectanglePosition;
+    output.rectangleSize = input.rectangleSize;
+    output.fillColor = input.fillColor;
+    output.borderColor = input.borderColor;
+    output.cornerRadius = input.cornerRadius;
+    output.borderThickness = input.borderThickness;
     return output;
+}
+
+fn SignedRoundedRectangleDistance(pixelPosition: vec2f, rectanglePosition: vec2f, rectangleSize: vec2f,
+                                  cornerRadius: f32) -> f32 {
+    let halfSize = rectangleSize * 0.5;
+    let radius = clamp(cornerRadius, 0.0, min(halfSize.x, halfSize.y));
+    let centeredPosition = pixelPosition - rectanglePosition - halfSize;
+    let cornerDistance = abs(centeredPosition) - halfSize + vec2f(radius);
+    return length(max(cornerDistance, vec2f(0.0))) + min(max(cornerDistance.x, cornerDistance.y), 0.0) - radius;
 }
 
 @fragment
 fn FragmentMain(input: VertexOutput) -> @location(0) vec4f {
-    return input.color;
+    let signedDistance = SignedRoundedRectangleDistance(input.pixelPosition, input.rectanglePosition,
+                                                        input.rectangleSize, input.cornerRadius);
+    let edgeAlpha = 1.0 - smoothstep(0.0, 1.0, signedDistance);
+    if (edgeAlpha <= 0.0) {
+        discard;
+    }
+
+    let hasBorder = input.borderThickness > 0.0 && input.borderColor.a > 0.0;
+    var rectangleColor = input.fillColor;
+    if (hasBorder) {
+        let fillAmount = 1.0 - smoothstep(-input.borderThickness - 1.0, -input.borderThickness, signedDistance);
+        rectangleColor = mix(input.borderColor, input.fillColor, fillAmount);
+    }
+
+    return vec4f(rectangleColor.rgb, rectangleColor.a * edgeAlpha);
 }
 )";
 }
@@ -152,16 +193,46 @@ void WebGpuRenderer::EnsureRectanglePipeline()
     };
     wgpu::ShaderModule shaderModule = _context->GetDevice().CreateShaderModule(&shaderModuleDescriptor);
 
-    const std::array<wgpu::VertexAttribute, 2> vertexAttributes{{
+    const std::array<wgpu::VertexAttribute, 8> vertexAttributes{{
         wgpu::VertexAttribute{
             .format = wgpu::VertexFormat::Float32x2,
             .offset = offsetof(RectangleVertex, position),
             .shaderLocation = 0,
         },
         wgpu::VertexAttribute{
-            .format = wgpu::VertexFormat::Float32x4,
-            .offset = offsetof(RectangleVertex, color),
+            .format = wgpu::VertexFormat::Float32x2,
+            .offset = offsetof(RectangleVertex, pixelPosition),
             .shaderLocation = 1,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x2,
+            .offset = offsetof(RectangleVertex, rectanglePosition),
+            .shaderLocation = 2,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x2,
+            .offset = offsetof(RectangleVertex, rectangleSize),
+            .shaderLocation = 3,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x4,
+            .offset = offsetof(RectangleVertex, fillColor),
+            .shaderLocation = 4,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x4,
+            .offset = offsetof(RectangleVertex, borderColor),
+            .shaderLocation = 5,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32,
+            .offset = offsetof(RectangleVertex, cornerRadius),
+            .shaderLocation = 6,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32,
+            .offset = offsetof(RectangleVertex, borderThickness),
+            .shaderLocation = 7,
         },
     }};
 
@@ -172,8 +243,24 @@ void WebGpuRenderer::EnsureRectanglePipeline()
         .attributes = vertexAttributes.data(),
     };
 
+    const wgpu::BlendState blendState{
+        .color =
+            wgpu::BlendComponent{
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::SrcAlpha,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+            },
+        .alpha =
+            wgpu::BlendComponent{
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::One,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+            },
+    };
+
     const wgpu::ColorTargetState colorTargetState{
         .format = surfaceFormat,
+        .blend = &blendState,
         .writeMask = wgpu::ColorWriteMask::All,
     };
 
@@ -197,6 +284,35 @@ void WebGpuRenderer::EnsureRectanglePipeline()
     _rectanglePipelineFormat = surfaceFormat;
 }
 
+WebGpuRenderer::RectangleVertex WebGpuRenderer::MakeRectangleVertex(float clipPositionX, float clipPositionY,
+                                                                    float pixelPositionX, float pixelPositionY,
+                                                                    const RenderCommand& renderCommand) const noexcept
+{
+    const Rect& rectangle = renderCommand.rectangle;
+    return RectangleVertex{
+        .position = {clipPositionX, clipPositionY},
+        .pixelPosition = {pixelPositionX, pixelPositionY},
+        .rectanglePosition = {rectangle.position.x, rectangle.position.y},
+        .rectangleSize = {rectangle.size.x, rectangle.size.y},
+        .fillColor =
+            {
+                renderCommand.fillColor.red,
+                renderCommand.fillColor.green,
+                renderCommand.fillColor.blue,
+                renderCommand.fillColor.alpha,
+            },
+        .borderColor =
+            {
+                renderCommand.borderColor.red,
+                renderCommand.borderColor.green,
+                renderCommand.borderColor.blue,
+                renderCommand.borderColor.alpha,
+            },
+        .cornerRadius = renderCommand.cornerRadius,
+        .borderThickness = renderCommand.borderThickness,
+    };
+}
+
 void WebGpuRenderer::BuildRectangleVertices()
 {
     _rectangleVertices.clear();
@@ -206,13 +322,6 @@ void WebGpuRenderer::BuildRectangleVertices()
     }
 
     _rectangleVertices.reserve(_submittedCommands.Size() * 6);
-
-    const auto makeRectangleVertex = [](float positionX, float positionY, const Color& color) {
-        return RectangleVertex{
-            .position = {positionX, positionY},
-            .color = {color.red, color.green, color.blue, color.alpha},
-        };
-    };
 
     for (const RenderCommand& renderCommand : _submittedCommands.Commands())
     {
@@ -227,10 +336,14 @@ void WebGpuRenderer::BuildRectangleVertices()
         const float top = ConvertPixelYToClipSpace(rectangle.position.y, _context->GetSurfaceHeight());
         const float bottom = ConvertPixelYToClipSpace(rectangle.position.y + rectangle.size.y, _context->GetSurfaceHeight());
 
-        const RectangleVertex topLeft = makeRectangleVertex(left, top, renderCommand.color);
-        const RectangleVertex topRight = makeRectangleVertex(right, top, renderCommand.color);
-        const RectangleVertex bottomLeft = makeRectangleVertex(left, bottom, renderCommand.color);
-        const RectangleVertex bottomRight = makeRectangleVertex(right, bottom, renderCommand.color);
+        const RectangleVertex topLeft =
+            MakeRectangleVertex(left, top, rectangle.position.x, rectangle.position.y, renderCommand);
+        const RectangleVertex topRight = MakeRectangleVertex(
+            right, top, rectangle.position.x + rectangle.size.x, rectangle.position.y, renderCommand);
+        const RectangleVertex bottomLeft = MakeRectangleVertex(
+            left, bottom, rectangle.position.x, rectangle.position.y + rectangle.size.y, renderCommand);
+        const RectangleVertex bottomRight =
+            MakeRectangleVertex(right, bottom, rectangle.position.x + rectangle.size.x, rectangle.position.y + rectangle.size.y, renderCommand);
 
         _rectangleVertices.push_back(topLeft);
         _rectangleVertices.push_back(bottomLeft);

@@ -16,7 +16,17 @@ struct ButtonStyle
     Color normal{0.34f, 0.60f, 0.95f, 1.0f};
     Color hovered{0.40f, 0.72f, 0.96f, 1.0f};
     Color pressed{0.18f, 0.42f, 0.72f, 1.0f};
+    Color border{0.68f, 0.78f, 0.92f, 0.35f};
     float cornerRadius{8.0f};
+    float borderThickness{1.0f};
+};
+
+struct RectangleStyle
+{
+    Color fillColor{};
+    float cornerRadius{0.0f};
+    Color borderColor{};
+    float borderThickness{0.0f};
 };
 
 class UiContext
@@ -30,9 +40,13 @@ public:
     void EndRow();
     void AddSpacing(float spacing);
     void DrawFilledRectangle(const Rect& rectangle, const Color& color, float cornerRadius = 0.0f);
+    void DrawRectangle(const Rect& rectangle, const RectangleStyle& rectangleStyle);
     void Panel(const Rect& bounds, const Color& color, float cornerRadius = 0.0f);
+    void Panel(const Rect& bounds, const RectangleStyle& rectangleStyle);
     Rect Panel(const Color& color, float cornerRadius = 0.0f);
     Rect Panel(const Color& color, const Vec2& itemSize, float cornerRadius = 0.0f);
+    Rect Panel(const RectangleStyle& rectangleStyle);
+    Rect Panel(const RectangleStyle& rectangleStyle, const Vec2& itemSize);
     [[nodiscard]] bool Button(const std::string& name);
     [[nodiscard]] bool Button(const std::string& name, const ButtonStyle& buttonStyle);
     [[nodiscard]] bool Button(const std::string& name, const Vec2& itemSize, const ButtonStyle& buttonStyle);

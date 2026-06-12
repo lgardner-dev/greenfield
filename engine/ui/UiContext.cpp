@@ -76,9 +76,25 @@ void UiContext::DrawFilledRectangle(const Rect& rectangle, const Color& color, f
     _renderCommands.AddFillRectangle(rectangle, color, cornerRadius);
 }
 
+void UiContext::DrawRectangle(const Rect& rectangle, const RectangleStyle& rectangleStyle)
+{
+    _renderCommands.AddFillRectangle(rectangle, rectangleStyle.fillColor, rectangleStyle.cornerRadius, rectangleStyle.borderColor, rectangleStyle.borderThickness);
+}
+
 void UiContext::Panel(const Rect& bounds, const Color& color, float cornerRadius)
 {
-    DrawFilledRectangle(bounds, color, cornerRadius);
+    Panel(bounds,
+          RectangleStyle{
+              .fillColor = color,
+              .cornerRadius = cornerRadius,
+              .borderColor = _style.panelBorder,
+              .borderThickness = _style.panelBorderThickness,
+          });
+}
+
+void UiContext::Panel(const Rect& bounds, const RectangleStyle& rectangleStyle)
+{
+    DrawRectangle(bounds, rectangleStyle);
 }
 
 Rect UiContext::Panel(const Color& color, float cornerRadius)
@@ -92,6 +108,20 @@ Rect UiContext::Panel(const Color& color, const Vec2& itemSize, float cornerRadi
 {
     const Rect bounds = GetNextLayoutBounds(itemSize);
     Panel(bounds, color, cornerRadius);
+    return bounds;
+}
+
+Rect UiContext::Panel(const RectangleStyle& rectangleStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(Vec2{});
+    Panel(bounds, rectangleStyle);
+    return bounds;
+}
+
+Rect UiContext::Panel(const RectangleStyle& rectangleStyle, const Vec2& itemSize)
+{
+    const Rect bounds = GetNextLayoutBounds(itemSize);
+    Panel(bounds, rectangleStyle);
     return bounds;
 }
 
@@ -126,7 +156,13 @@ bool UiContext::Button(const std::string& name, const Rect& bounds, const Button
     }
 
     const bool isClicked = isHovered && IsButtonActive(name) && _inputState.leftMouseButtonReleased;
-    DrawFilledRectangle(bounds, GetButtonColor(name, bounds, buttonStyle), buttonStyle.cornerRadius);
+    DrawRectangle(bounds,
+                  RectangleStyle{
+                      .fillColor = GetButtonColor(name, bounds, buttonStyle),
+                      .cornerRadius = buttonStyle.cornerRadius,
+                      .borderColor = buttonStyle.border,
+                      .borderThickness = buttonStyle.borderThickness,
+                  });
 
     if (IsButtonActive(name) && _inputState.leftMouseButtonReleased)
     {

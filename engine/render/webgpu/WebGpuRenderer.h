@@ -28,10 +28,19 @@ private:
     struct RectangleVertex
     {
         float position[2]{};
-        float color[4]{};
+        float pixelPosition[2]{};
+        float rectanglePosition[2]{};
+        float rectangleSize[2]{};
+        float fillColor[4]{};
+        float borderColor[4]{};
+        float cornerRadius{0.0f};
+        float borderThickness{0.0f};
     };
 
     void EnsureRectanglePipeline();
+    [[nodiscard]] RectangleVertex MakeRectangleVertex(float clipPositionX, float clipPositionY, float pixelPositionX,
+                                                      float pixelPositionY,
+                                                      const RenderCommand& renderCommand) const noexcept;
     void BuildRectangleVertices();
     void EnsureVertexBuffer(std::size_t requiredSize);
     void DrawRectangles(wgpu::RenderPassEncoder& renderPass);
