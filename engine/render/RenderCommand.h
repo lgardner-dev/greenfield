@@ -16,6 +16,7 @@ struct RenderCommand
     RenderCommandType type{RenderCommandType::FillRectangle};
     Rect rectangle{};
     Color color{};
+    float cornerRadius{0.0f};
 };
 
 } // namespace greenfield

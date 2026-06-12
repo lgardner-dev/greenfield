@@ -45,6 +45,7 @@ target_link_libraries(greenfield_ui PUBLIC greenfield_core greenfield_render)
 greenfield_enable_warnings(greenfield_ui)
 
 add_library(greenfield_platform
+    engine/platform/SdlStartupPresenter.cpp
     engine/platform/SdlWindow.cpp
 )
 target_include_directories(greenfield_platform PUBLIC "${PROJECT_SOURCE_DIR}")

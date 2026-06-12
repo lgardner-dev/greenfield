@@ -19,12 +19,13 @@ public:
         _commands.clear();
     }
 
-    void AddFillRectangle(const Rect& rectangle, const Color& color)
+    void AddFillRectangle(const Rect& rectangle, const Color& color, float cornerRadius = 0.0f)
     {
         _commands.push_back(RenderCommand{
             .type = RenderCommandType::FillRectangle,
             .rectangle = rectangle,
             .color = color,
+            .cornerRadius = cornerRadius,
         });
     }
 

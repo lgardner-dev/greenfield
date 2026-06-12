@@ -11,7 +11,7 @@ class UiContext
 {
 public:
     void BeginFrame(const Layout& layout);
-    void DrawFilledRectangle(const Rect& rectangle, const Color& color);
+    void DrawFilledRectangle(const Rect& rectangle, const Color& color, float cornerRadius = 0.0f);
     [[nodiscard]] const RenderCommandList& EndFrame();
 
     void SetStyle(const Style& style);

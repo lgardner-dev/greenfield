@@ -18,9 +18,14 @@ int main()
     };
 
     RenderCommandList renderCommands;
-    renderCommands.AddFillRectangle(bounds, Color{0.25f, 0.5f, 0.75f, 1.0f});
+    renderCommands.AddFillRectangle(bounds, Color{0.25f, 0.5f, 0.75f, 1.0f}, 6.0f);
 
     if (renderCommands.Size() != 1U)
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (renderCommands.Commands()[0].cornerRadius != 6.0f)
     {
         return EXIT_FAILURE;
     }

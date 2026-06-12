@@ -9,9 +9,9 @@ void UiContext::BeginFrame(const Layout& layout)
     _renderCommands.Clear();
 }
 
-void UiContext::DrawFilledRectangle(const Rect& rectangle, const Color& color)
+void UiContext::DrawFilledRectangle(const Rect& rectangle, const Color& color, float cornerRadius)
 {
-    _renderCommands.AddFillRectangle(rectangle, color);
+    _renderCommands.AddFillRectangle(rectangle, color, cornerRadius);
 }
 
 const RenderCommandList& UiContext::EndFrame()
