@@ -9,7 +9,9 @@
       "toolchainFile": "${sourceDir}/cmake/vcpkg-toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VCPKG_ROOT": "${sourceDir}/.tools/vcpkg",
+        "GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES": "OFF"
       }
     },
     {
@@ -20,7 +22,9 @@
       "toolchainFile": "${sourceDir}/cmake/vcpkg-toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VCPKG_ROOT": "${sourceDir}/.tools/vcpkg",
+        "GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES": "OFF"
       }
     }
   ],

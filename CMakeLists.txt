@@ -8,6 +8,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(Warnings)
 
+option(GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES "Allow CMake to use system-installed dependencies when vcpkg is not available" OFF)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -16,8 +18,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+if(GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+    set(GREENFIELD_SDL3_TARGET PkgConfig::SDL3)
+else()
+    find_package(SDL3 CONFIG REQUIRED)
+    set(GREENFIELD_SDL3_TARGET SDL3::SDL3)
+endif()
 
 add_library(greenfield_core INTERFACE)
 target_include_directories(greenfield_core INTERFACE "${PROJECT_SOURCE_DIR}")
@@ -38,7 +46,7 @@ add_library(greenfield_platform
     engine/platform/SdlWindow.cpp
 )
 target_include_directories(greenfield_platform PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_platform PUBLIC greenfield_core PkgConfig::SDL3)
+target_link_libraries(greenfield_platform PUBLIC greenfield_core "${GREENFIELD_SDL3_TARGET}")
 greenfield_enable_warnings(greenfield_platform)
 
 add_library(greenfield_webgpu

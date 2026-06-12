@@ -3,12 +3,35 @@ BUILD_PRESET ?= dev
 CONFIGURE_PRESET ?= dev
 BUILD_DIR ?= $(ROOT_DIR)/build/$(BUILD_PRESET)
 SANDBOX_BINARY := $(BUILD_DIR)/bin/greenfield_sandbox
+LOCAL_VCPKG_ROOT := $(ROOT_DIR)/.tools/vcpkg
 SOURCE_FILES := $(shell find "$(ROOT_DIR)" -path "$(ROOT_DIR)/build" -prune -o \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) -print)
 
 .PHONY: bootstrap configure build run test clean format
 
 bootstrap:
-	cmake -S "$(ROOT_DIR)" -B "$(BUILD_DIR)" -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE="$(ROOT_DIR)/cmake/vcpkg-toolchain.cmake"
+	@set -eu; \
+	if [ -n "$${VCPKG_ROOT:-}" ]; then \
+		vcpkg_root="$${VCPKG_ROOT}"; \
+		if [ ! -f "$${vcpkg_root}/scripts/buildsystems/vcpkg.cmake" ]; then \
+			echo "VCPKG_ROOT is set to '$${vcpkg_root}', but scripts/buildsystems/vcpkg.cmake was not found." >&2; \
+			exit 1; \
+		fi; \
+	else \
+		vcpkg_root="$(LOCAL_VCPKG_ROOT)"; \
+		if [ ! -d "$${vcpkg_root}/.git" ]; then \
+			mkdir -p "$(ROOT_DIR)/.tools"; \
+			git clone --depth 1 https://github.com/microsoft/vcpkg "$${vcpkg_root}"; \
+		fi; \
+	fi; \
+	if [ ! -x "$${vcpkg_root}/vcpkg" ]; then \
+		if [ -x "$${vcpkg_root}/bootstrap-vcpkg.sh" ]; then \
+			"$${vcpkg_root}/bootstrap-vcpkg.sh"; \
+		else \
+			echo "vcpkg is missing from '$${vcpkg_root}' and bootstrap-vcpkg.sh was not found." >&2; \
+			exit 1; \
+		fi; \
+	fi; \
+	cmake --preset "$(CONFIGURE_PRESET)"
 
 configure:
 	cmake --preset $(CONFIGURE_PRESET)

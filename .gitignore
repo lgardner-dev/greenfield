@@ -17,6 +17,7 @@ install_manifest.txt
 
 # vcpkg
 vcpkg_installed/
+.tools/
 
 # IDE and editor files
 .idea/

@@ -8,17 +8,26 @@ Greenfield is a UI-first C++20 engine skeleton for desktop applications.
 - A renderer-agnostic UI command layer
 - A WebGPU renderer stub with clean ownership boundaries
 - CMake with Ninja presets
-- Optional vcpkg manifest-mode integration
+- vcpkg manifest-mode as the default dependency path
 
 ## Build
 
 ```bash
-cmake --preset dev
-cmake --build --preset dev
+make bootstrap
+make run
 ```
 
-If `VCPKG_ROOT` is set, the preset toolchain wrapper will load vcpkg automatically in manifest mode.
-If vcpkg is not available yet, the current skeleton falls back to the system SDL3 package found via `pkg-config`.
+`make bootstrap` uses `VCPKG_ROOT` when it is already set. Otherwise it clones vcpkg into `.tools/vcpkg`, bootstraps it, and configures the `dev` preset.
+
+System-installed dependencies are only used when `GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES=ON` is passed explicitly.
+
+Direct CMake usage is also supported:
+
+```bash
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+```
 
 ## Run
 
@@ -30,7 +39,6 @@ If vcpkg is not available yet, the current skeleton falls back to the system SDL
 
 ```bash
 make bootstrap
-make configure
 make build
 make run
 make test
