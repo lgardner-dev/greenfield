@@ -19,7 +19,33 @@ namespace
 
 using namespace greenfield;
 
-void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight)
+ButtonStyle GetCardButtonStyle(bool isSelected)
+{
+    if (isSelected)
+    {
+        return ButtonStyle{
+            .normal = Color{0.24f, 0.78f, 0.56f, 1.0f},
+            .hovered = Color{0.35f, 0.88f, 0.66f, 1.0f},
+            .pressed = Color{0.16f, 0.56f, 0.40f, 1.0f},
+            .cornerRadius = 8.0f,
+        };
+    }
+
+    return ButtonStyle{
+        .normal = Color{0.26f, 0.38f, 0.58f, 1.0f},
+        .hovered = Color{0.34f, 0.58f, 0.86f, 1.0f},
+        .pressed = Color{0.18f, 0.32f, 0.52f, 1.0f},
+        .cornerRadius = 8.0f,
+    };
+}
+
+void BuildSimpleUi(
+    UiContext& uiContext,
+    int windowWidth,
+    int windowHeight,
+    bool& firstSelected,
+    bool& secondSelected,
+    bool& thirdSelected)
 {
     const auto panelWidth = static_cast<float>(windowWidth) * 0.62f;
     const auto panelHeight = static_cast<float>(windowHeight) * 0.52f;
@@ -39,19 +65,28 @@ void BuildSimpleUi(UiContext& uiContext, int windowWidth, int windowHeight)
         .position = Vec2{48.0f, 104.0f},
         .size = Vec2{180.0f, 88.0f},
     };
-    uiContext.DrawFilledRectangle(firstCard, Color{0.24f, 0.78f, 0.56f, 1.0f}, 8.0f);
+    if (uiContext.Button("first-card", firstCard, GetCardButtonStyle(firstSelected)))
+    {
+        firstSelected = !firstSelected;
+    }
 
     const auto secondCard = Rect{
         .position = Vec2{252.0f, 104.0f},
         .size = Vec2{180.0f, 88.0f},
     };
-    uiContext.DrawFilledRectangle(secondCard, Color{0.95f, 0.66f, 0.30f, 1.0f}, 8.0f);
+    if (uiContext.Button("second-card", secondCard, GetCardButtonStyle(secondSelected)))
+    {
+        secondSelected = !secondSelected;
+    }
 
     const auto thirdCard = Rect{
         .position = Vec2{456.0f, 104.0f},
         .size = Vec2{180.0f, 88.0f},
     };
-    uiContext.DrawFilledRectangle(thirdCard, Color{0.72f, 0.48f, 0.96f, 1.0f}, 8.0f);
+    if (uiContext.Button("third-card", thirdCard, GetCardButtonStyle(thirdSelected)))
+    {
+        thirdSelected = !thirdSelected;
+    }
 }
 
 } // namespace
@@ -80,6 +115,9 @@ int main()
 
         const Style style{};
         uiContext.SetStyle(style);
+        bool firstSelected = false;
+        bool secondSelected = false;
+        bool thirdSelected = false;
 
         while (!window.ShouldClose())
         {
@@ -99,8 +137,8 @@ int main()
                 .padding = 16.0f,
             };
 
-            uiContext.BeginFrame(layout);
-            BuildSimpleUi(uiContext, window.GetWidth(), window.GetHeight());
+            uiContext.BeginFrame(layout, window.GetInputState());
+            BuildSimpleUi(uiContext, window.GetWidth(), window.GetHeight(), firstSelected, secondSelected, thirdSelected);
 
             const auto& renderCommands = uiContext.EndFrame();
             renderer.Submit(renderCommands);

@@ -72,7 +72,7 @@ if(BUILD_TESTING)
         tests/core_smoke.cpp
     )
     target_include_directories(greenfield_core_smoke PRIVATE "${PROJECT_SOURCE_DIR}")
-    target_link_libraries(greenfield_core_smoke PRIVATE greenfield_core greenfield_render)
+    target_link_libraries(greenfield_core_smoke PRIVATE greenfield_core greenfield_render greenfield_ui)
     greenfield_enable_warnings(greenfield_core_smoke)
 
     add_test(NAME greenfield_core_smoke COMMAND greenfield_core_smoke)

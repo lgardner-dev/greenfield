@@ -24,9 +24,14 @@ public:
     [[nodiscard]] bool ShouldClose() const noexcept override;
     [[nodiscard]] int GetWidth() const noexcept override;
     [[nodiscard]] int GetHeight() const noexcept override;
+    [[nodiscard]] const InputState& GetInputState() const noexcept override;
     [[nodiscard]] SDL_Window* GetNativeWindow() const noexcept;
 
 private:
+    void BeginInputFrame();
+    void HandleMouseMotion(float x, float y);
+    void HandleMouseButtonDown(unsigned char button, float x, float y);
+    void HandleMouseButtonUp(unsigned char button, float x, float y);
     void UpdateWindowSize();
 
     std::string _title;
@@ -34,6 +39,7 @@ private:
     int _width{0};
     int _height{0};
     bool _shouldClose{false};
+    InputState _inputState{};
 };
 
 } // namespace greenfield

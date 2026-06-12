@@ -70,6 +70,8 @@ SdlWindow::~SdlWindow()
 
 void SdlWindow::PollEvents()
 {
+    BeginInputFrame();
+
     SDL_Event event{};
     while (SDL_PollEvent(&event))
     {
@@ -84,6 +86,18 @@ void SdlWindow::PollEvents()
         else if (event.type == SDL_EVENT_WINDOW_RESIZED && event.window.windowID == SDL_GetWindowID(_window))
         {
             UpdateWindowSize();
+        }
+        else if (event.type == SDL_EVENT_MOUSE_MOTION && event.motion.windowID == SDL_GetWindowID(_window))
+        {
+            HandleMouseMotion(event.motion.x, event.motion.y);
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == SDL_GetWindowID(_window))
+        {
+            HandleMouseButtonDown(event.button.button, event.button.x, event.button.y);
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.windowID == SDL_GetWindowID(_window))
+        {
+            HandleMouseButtonUp(event.button.button, event.button.x, event.button.y);
         }
     }
 
@@ -105,9 +119,57 @@ int SdlWindow::GetHeight() const noexcept
     return _height;
 }
 
+const InputState& SdlWindow::GetInputState() const noexcept
+{
+    return _inputState;
+}
+
 SDL_Window* SdlWindow::GetNativeWindow() const noexcept
 {
     return _window;
+}
+
+void SdlWindow::BeginInputFrame()
+{
+    _inputState.leftMouseButtonPressed = false;
+    _inputState.leftMouseButtonReleased = false;
+}
+
+void SdlWindow::HandleMouseMotion(float x, float y)
+{
+    _inputState.mousePosition = Vec2{x, y};
+}
+
+void SdlWindow::HandleMouseButtonDown(unsigned char button, float x, float y)
+{
+    if (button != SDL_BUTTON_LEFT)
+    {
+        return;
+    }
+
+    _inputState.mousePosition = Vec2{x, y};
+    if (!_inputState.leftMouseButtonDown)
+    {
+        _inputState.leftMouseButtonPressed = true;
+    }
+
+    _inputState.leftMouseButtonDown = true;
+}
+
+void SdlWindow::HandleMouseButtonUp(unsigned char button, float x, float y)
+{
+    if (button != SDL_BUTTON_LEFT)
+    {
+        return;
+    }
+
+    _inputState.mousePosition = Vec2{x, y};
+    if (_inputState.leftMouseButtonDown)
+    {
+        _inputState.leftMouseButtonReleased = true;
+    }
+
+    _inputState.leftMouseButtonDown = false;
 }
 
 void SdlWindow::UpdateWindowSize()
