@@ -1,5 +1,7 @@
 #include "engine/ui/UiContext.h"
 
+#include <algorithm>
+
 namespace greenfield
 {
 
@@ -9,6 +11,8 @@ namespace
 constexpr Vec2 DefaultLayoutItemSize{160.0f, 48.0f};
 constexpr float DefaultTextFontSize{18.0f};
 constexpr float ButtonHorizontalTextInset{16.0f};
+constexpr float CheckboxHorizontalGap{10.0f};
+constexpr float CheckboxIndicatorInset{5.0f};
 constexpr float MouseWheelScrollPixels{42.0f};
 
 } // namespace
@@ -264,6 +268,86 @@ bool UiContext::Button(const std::string& name, const std::string& label, const 
     return isClicked;
 }
 
+bool UiContext::Checkbox(const std::string& name)
+{
+    return Checkbox(name, name);
+}
+
+bool UiContext::Checkbox(const std::string& name, const std::string& label)
+{
+    return Checkbox(name, label, CheckboxStyle{});
+}
+
+bool UiContext::Checkbox(const std::string& name, const CheckboxStyle& checkboxStyle)
+{
+    return Checkbox(name, name, checkboxStyle);
+}
+
+bool UiContext::Checkbox(const std::string& name, const std::string& label,
+                         const CheckboxStyle& checkboxStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(Vec2{});
+    return Checkbox(name, label, bounds, checkboxStyle);
+}
+
+bool UiContext::Checkbox(const std::string& name, const Vec2& itemSize,
+                         const CheckboxStyle& checkboxStyle)
+{
+    return Checkbox(name, name, itemSize, checkboxStyle);
+}
+
+bool UiContext::Checkbox(const std::string& name, const std::string& label, const Vec2& itemSize,
+                         const CheckboxStyle& checkboxStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(itemSize);
+    return Checkbox(name, label, bounds, checkboxStyle);
+}
+
+bool UiContext::Checkbox(const std::string& name, const Rect& bounds)
+{
+    return Checkbox(name, name, bounds);
+}
+
+bool UiContext::Checkbox(const std::string& name, const std::string& label, const Rect& bounds)
+{
+    return Checkbox(name, label, bounds, CheckboxStyle{});
+}
+
+bool UiContext::Checkbox(const std::string& name, const Rect& bounds,
+                         const CheckboxStyle& checkboxStyle)
+{
+    return Checkbox(name, name, bounds, checkboxStyle);
+}
+
+bool UiContext::Checkbox(const std::string& name, const std::string& label, const Rect& bounds,
+                         const CheckboxStyle& checkboxStyle)
+{
+    const UiId checkboxId = MakeUiId(name);
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
+    {
+        CaptureControl(checkboxId);
+        ConsumeMousePress();
+    }
+
+    const bool isReleased = IsControlActive(checkboxId) && _inputState.leftMouseButtonReleased;
+    const bool changed = isHovered && isReleased && !IsMouseReleaseConsumed();
+    if (changed)
+    {
+        ToggleBooleanState(checkboxId);
+    }
+
+    DrawCheckbox(checkboxId, label, bounds, checkboxStyle);
+
+    if (isReleased)
+    {
+        ConsumeMouseRelease();
+        ReleaseActiveControl();
+    }
+
+    return changed;
+}
+
 const RenderCommandList& UiContext::EndFrame()
 {
     return _renderCommands;
@@ -509,6 +593,23 @@ Color UiContext::GetButtonColor(const UiId& buttonId, const Rect& bounds, const 
     return buttonStyle.normal;
 }
 
+Color UiContext::GetCheckboxBoxColor(const UiId& checkboxId, const Rect& bounds,
+                                     const CheckboxStyle& checkboxStyle) const
+{
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    if (IsControlActive(checkboxId) && _inputState.leftMouseButtonDown)
+    {
+        return checkboxStyle.boxPressed;
+    }
+
+    if (isHovered)
+    {
+        return checkboxStyle.boxHovered;
+    }
+
+    return checkboxStyle.boxFill;
+}
+
 float UiContext::GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight)
 {
     const float maximumScrollOffset = contentHeight > bounds.size.y ? contentHeight - bounds.size.y : 0.0f;
@@ -539,6 +640,41 @@ void UiContext::DrawButtonLabel(const std::string& label, const Rect& bounds, co
             },
     };
     DrawText(label, labelBounds, buttonStyle.fontSize, buttonStyle.textColor);
+}
+
+void UiContext::DrawCheckbox(const UiId& checkboxId, const std::string& label, const Rect& bounds,
+                             const CheckboxStyle& checkboxStyle)
+{
+    const float safeBoxSize = std::max(0.0f, std::min(checkboxStyle.boxSize, bounds.size.y));
+    const float boxTop = bounds.position.y + (bounds.size.y - safeBoxSize) * 0.5f;
+    const Rect boxBounds{
+        .position = Vec2{.x = bounds.position.x, .y = boxTop},
+        .size = Vec2{.x = safeBoxSize, .y = safeBoxSize},
+    };
+    DrawRectangle(boxBounds,
+                  RectangleStyle{
+                      .fillColor = GetCheckboxBoxColor(checkboxId, bounds, checkboxStyle),
+                      .cornerRadius = checkboxStyle.cornerRadius,
+                      .borderColor = checkboxStyle.boxBorder,
+                      .borderThickness = checkboxStyle.borderThickness,
+                  });
+
+    if (GetBooleanState(checkboxId))
+    {
+        DrawFilledRectangle(InsetRectangle(boxBounds, CheckboxIndicatorInset), checkboxStyle.checkFill, checkboxStyle.cornerRadius * 0.5f);
+    }
+
+    const float labelLeft = boxBounds.position.x + safeBoxSize + CheckboxHorizontalGap;
+    const float labelTop = bounds.position.y + (bounds.size.y - checkboxStyle.fontSize) * 0.5f - 2.0f;
+    const Rect labelBounds{
+        .position = Vec2{.x = labelLeft, .y = labelTop},
+        .size =
+            Vec2{
+                .x = std::max(0.0f, bounds.position.x + bounds.size.x - labelLeft),
+                .y = checkboxStyle.fontSize * 1.4f,
+            },
+    };
+    DrawText(label, labelBounds, checkboxStyle.fontSize, checkboxStyle.textColor);
 }
 
 } // namespace greenfield

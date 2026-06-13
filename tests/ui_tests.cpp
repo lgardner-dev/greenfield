@@ -537,6 +537,275 @@ namespace
     return firstButtonClicked && !secondButtonClicked && releaseCommands.Size() == 4U;
 }
 
+[[nodiscard]] bool TestCheckboxDefaultsUnchecked()
+{
+    using namespace greenfield;
+
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    if (uiContext.Checkbox("default-checkbox", checkboxBounds))
+    {
+        return false;
+    }
+
+    const auto& commands = uiContext.EndFrame();
+    return commands.Size() == 2U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("default-checkbox"));
+}
+
+[[nodiscard]] bool TestCheckboxClickTogglesCheckedState()
+{
+    using namespace greenfield;
+
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Checkbox("toggle-checkbox", checkboxBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool changed = uiContext.Checkbox("toggle-checkbox", checkboxBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return changed && releaseCommands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("toggle-checkbox"));
+}
+
+[[nodiscard]] bool TestCheckboxCheckedStatePersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("persistent-checkbox"), true);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Checkbox("persistent-checkbox", checkboxBounds);
+    const auto& firstCommands = uiContext.EndFrame();
+    if (changed || firstCommands.Size() != 3U ||
+        !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("persistent-checkbox")))
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool secondFrameChanged = uiContext.Checkbox("persistent-checkbox", checkboxBounds);
+    const auto& secondCommands = uiContext.EndFrame();
+    return !secondFrameChanged && secondCommands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("persistent-checkbox"));
+}
+
+[[nodiscard]] bool TestCheckboxSecondClickTogglesBackOff()
+{
+    using namespace greenfield;
+
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("second-click-checkbox"), true);
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Checkbox("second-click-checkbox", checkboxBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 3U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool changed = uiContext.Checkbox("second-click-checkbox", checkboxBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return changed && releaseCommands.Size() == 2U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("second-click-checkbox"));
+}
+
+[[nodiscard]] bool TestCheckboxStateIsIndependentPerUiId()
+{
+    using namespace greenfield;
+
+    const Rect firstCheckboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+    const Rect secondCheckboxBounds{
+        .position = Vec2{10.0f, 64.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("first-checkbox"), true);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool firstChanged = uiContext.Checkbox("first-checkbox", firstCheckboxBounds);
+    const bool secondChanged = uiContext.Checkbox("second-checkbox", secondCheckboxBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !firstChanged && !secondChanged && commands.Size() == 5U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("first-checkbox")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("second-checkbox"));
+}
+
+[[nodiscard]] bool TestOverlappingCheckboxAndButtonConsumeOneGesture()
+{
+    using namespace greenfield;
+
+    const Rect overlappingBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Checkbox("overlap-checkbox", overlappingBounds) ||
+        uiContext.Button("overlap-button", overlappingBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool checkboxChanged = uiContext.Checkbox("overlap-checkbox", overlappingBounds);
+    const bool buttonClicked = uiContext.Button("overlap-button", overlappingBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return checkboxChanged && !buttonClicked && releaseCommands.Size() == 5U;
+}
+
+[[nodiscard]] bool TestOverlappingCheckboxesConsumeOneGesture()
+{
+    using namespace greenfield;
+
+    const Rect overlappingBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Checkbox("first-overlap-checkbox", overlappingBounds) ||
+        uiContext.Checkbox("second-overlap-checkbox", overlappingBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool firstChanged = uiContext.Checkbox("first-overlap-checkbox", overlappingBounds);
+    const bool secondChanged = uiContext.Checkbox("second-overlap-checkbox", overlappingBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return firstChanged && !secondChanged && releaseCommands.Size() == 5U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("first-overlap-checkbox")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("second-overlap-checkbox"));
+}
+
+[[nodiscard]] bool TestLayoutCheckboxAdvancesLayout()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{200.0f, 120.0f}},
+        .padding = 10.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{80.0f, 40.0f},
+    });
+    const bool changed = uiContext.Checkbox("layout-checkbox");
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 3U &&
+           RectanglesMatch(commands.Commands()[2].rectangle,
+                           Rect{.position = Vec2{10.0f, 56.0f}, .size = Vec2{80.0f, 40.0f}});
+}
+
+[[nodiscard]] bool TestExplicitBoundsCheckboxDoesNotAdvanceLayout()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{200.0f, 120.0f}},
+        .padding = 10.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{80.0f, 40.0f},
+    });
+    const bool changed =
+        uiContext.Checkbox("explicit-checkbox",
+                           Rect{.position = Vec2{30.0f, 70.0f}, .size = Vec2{120.0f, 32.0f}});
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 3U &&
+           RectanglesMatch(commands.Commands()[2].rectangle,
+                           Rect{.position = Vec2{10.0f, 10.0f}, .size = Vec2{80.0f, 40.0f}});
+}
+
+[[nodiscard]] bool TestCheckboxRenderCommandsIncludeBoxIndicatorAndLabel()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("render-checkbox"), true);
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Checkbox("render-checkbox", "Render label", checkboxBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 3U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[2].type == RenderCommandType::DrawText &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{10.0f, 28.0f}, .size = Vec2{20.0f, 20.0f}}) &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{15.0f, 33.0f}, .size = Vec2{10.0f, 10.0f}}) &&
+           commands.Commands()[2].text == "Render label";
+}
+
 [[nodiscard]] bool TestFocusDefaultsToEmpty()
 {
     using namespace greenfield;
@@ -704,7 +973,13 @@ int main()
         !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestScrollOffsetsPersistByPanelIdentity() ||
         !TestButtonHitAndClickBehavior() || !TestLayoutGeneratedButtonHitRegion() ||
         !TestActiveControlIdentitySurvivesPressReleaseFrames() ||
-        !TestOverlappingButtonPressIsConsumedByActiveControl() || !TestFocusDefaultsToEmpty() ||
+        !TestOverlappingButtonPressIsConsumedByActiveControl() || !TestCheckboxDefaultsUnchecked() ||
+        !TestCheckboxClickTogglesCheckedState() || !TestCheckboxCheckedStatePersistsAcrossFrames() ||
+        !TestCheckboxSecondClickTogglesBackOff() || !TestCheckboxStateIsIndependentPerUiId() ||
+        !TestOverlappingCheckboxAndButtonConsumeOneGesture() ||
+        !TestOverlappingCheckboxesConsumeOneGesture() || !TestLayoutCheckboxAdvancesLayout() ||
+        !TestExplicitBoundsCheckboxDoesNotAdvanceLayout() ||
+        !TestCheckboxRenderCommandsIncludeBoxIndicatorAndLabel() || !TestFocusDefaultsToEmpty() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
         !TestFocusPersistsAcrossFrames() || !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestFocusIsIndependentFromActiveControlAndScrollState())

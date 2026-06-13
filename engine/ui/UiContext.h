@@ -27,6 +27,20 @@ struct ButtonStyle
     float borderThickness{1.0f};
 };
 
+struct CheckboxStyle
+{
+    Color boxFill{0.18f, 0.20f, 0.24f, 1.0f};
+    Color boxHovered{0.24f, 0.28f, 0.34f, 1.0f};
+    Color boxPressed{0.14f, 0.18f, 0.24f, 1.0f};
+    Color boxBorder{0.68f, 0.78f, 0.92f, 0.45f};
+    Color checkFill{0.34f, 0.60f, 0.95f, 1.0f};
+    Color textColor{0.92f, 0.96f, 1.0f, 1.0f};
+    float fontSize{18.0f};
+    float boxSize{20.0f};
+    float cornerRadius{4.0f};
+    float borderThickness{1.0f};
+};
+
 struct RectangleStyle
 {
     Color fillColor{};
@@ -71,6 +85,21 @@ public:
     [[nodiscard]] bool Button(const std::string& name, const Rect& bounds, const ButtonStyle& buttonStyle);
     [[nodiscard]] bool Button(const std::string& name, const std::string& label, const Rect& bounds,
                               const ButtonStyle& buttonStyle);
+    [[nodiscard]] bool Checkbox(const std::string& name);
+    [[nodiscard]] bool Checkbox(const std::string& name, const std::string& label);
+    [[nodiscard]] bool Checkbox(const std::string& name, const CheckboxStyle& checkboxStyle);
+    [[nodiscard]] bool Checkbox(const std::string& name, const std::string& label,
+                                const CheckboxStyle& checkboxStyle);
+    [[nodiscard]] bool Checkbox(const std::string& name, const Vec2& itemSize,
+                                const CheckboxStyle& checkboxStyle);
+    [[nodiscard]] bool Checkbox(const std::string& name, const std::string& label, const Vec2& itemSize,
+                                const CheckboxStyle& checkboxStyle);
+    [[nodiscard]] bool Checkbox(const std::string& name, const Rect& bounds);
+    [[nodiscard]] bool Checkbox(const std::string& name, const std::string& label, const Rect& bounds);
+    [[nodiscard]] bool Checkbox(const std::string& name, const Rect& bounds,
+                                const CheckboxStyle& checkboxStyle);
+    [[nodiscard]] bool Checkbox(const std::string& name, const std::string& label, const Rect& bounds,
+                                const CheckboxStyle& checkboxStyle);
     [[nodiscard]] const RenderCommandList& EndFrame();
 
     void SetStyle(const Style& style);
@@ -120,9 +149,13 @@ private:
     void ToggleBooleanState(const UiId& controlId);
     [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
+    [[nodiscard]] Color GetCheckboxBoxColor(const UiId& checkboxId, const Rect& bounds,
+                                            const CheckboxStyle& checkboxStyle) const;
     [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
     [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
+    void DrawCheckbox(const UiId& checkboxId, const std::string& label, const Rect& bounds,
+                      const CheckboxStyle& checkboxStyle);
 
     friend struct UiContextTestAccess;
 
