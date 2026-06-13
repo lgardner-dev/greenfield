@@ -1,8 +1,17 @@
 # Greenfield Architecture
 
-Greenfield is a generic C++20 UI-first engine for polished cross-platform application UIs. The current codebase is intentionally small, with narrow interfaces between core types, input, platform code, renderer-neutral commands, WebGPU rendering, and UI widgets.
+Greenfield is an open-source, C++20, SDK-first creative application engine. The current codebase is intentionally small, with narrow interfaces between core types, input, platform code, renderer-neutral commands, the current Dawn/WebGPU backend, and UI widgets.
 
 This document describes the current layer boundaries. It should help contributors add features without accidentally coupling UI, platform, and renderer code.
+
+## SDK-First Architecture
+
+Greenfield is organized around the Greenfield SDK: the reusable runtime and library developers build applications with.
+
+- Greenfield Studio is a future application built on top of the SDK.
+- Greenfield CLI is future tooling around the SDK.
+- Shared engine layers should stay product-neutral and reusable.
+- Composition roots, sample apps, and sandbox applications may wire concrete implementations together, but reusable SDK layers should not depend on those applications.
 
 ## Layer Overview
 
@@ -50,6 +59,18 @@ Render contains renderer-facing abstractions that are not tied to a graphics API
 - `IRenderer`
 
 The UI emits `RenderCommandList` objects made of simple commands such as filled rectangles, text, and clip pushes/pops. These commands must remain renderer-agnostic. They should not contain SDL, Dawn, WebGPU, FreeType, or backend-specific handles.
+
+## Renderer Strategy
+
+The renderer direction is split between current implementation and future baseline intent:
+
+- Render commands remain renderer-agnostic.
+- The current Dawn/WebGPU backend is an implemented accelerated backend.
+- Greenfield should not be described as WebGPU-first.
+- Fast2D is the intended future default baseline renderer.
+- WebGPU/Dawn should remain backend-specific and optional in direction.
+- Skia may be considered later as an optional renderer/backend, but it is not the initial foundation.
+- Normal UI should not require WebGPU-specific concepts.
 
 ### `engine/render/webgpu`
 
@@ -117,14 +138,28 @@ The core rule is that platform and renderer details do not leak upward into UI o
 
 ## Important Boundaries
 
-- UI code must not include SDL, Dawn, WebGPU, or FreeType.
+- UI code must not include or depend on SDL, Dawn, WebGPU, or FreeType.
 - Render commands must remain renderer-agnostic.
+- Renderer backends must be swappable.
 - WebGPU code must stay under `engine/render/webgpu`.
 - SDL code must stay in the SDL platform implementation and startup presenter area.
 - `WebGpuContext` depends on `INativeSurfaceProvider`, not `SdlWindow`.
 - Future targets should add new providers or backends rather than coupling directly to existing concrete implementations.
 - Widgets should emit commands through `RenderCommandList`; they should not call renderer APIs directly.
 - Platform implementations should translate native events into `InputState`; UI should consume `InputState` without knowing the source.
+- Composition roots may wire concrete implementations together; reusable SDK layers should not depend on sandbox or demo applications.
+
+## Platform Strategy
+
+v0.1 development can be Linux-first, but release and export awareness should preserve Linux, Windows, and browser-hosted WebAssembly targets.
+
+Future platform targets should add providers or backends rather than leaking platform APIs into UI or renderer-neutral layers. The boundary should stay on abstractions, not on concrete platform SDKs.
+
+## Surface Direction
+
+UI surfaces exist now. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
+
+Those systems are not part of M0. When they arrive, the architectural intent is that they participate in one cohesive application experience without violating renderer or platform boundaries.
 
 ## Renderer Flow
 
@@ -174,7 +209,7 @@ These are expected places to extend Greenfield while preserving boundaries:
 - Text shaping: add shaping behind renderer or text services without putting FreeType or backend-specific font code in UI widgets.
 - Accessibility: add platform-neutral semantics and platform adapters without mixing accessibility APIs into widget drawing code.
 
-Some of these targets are future architecture directions, not current feature commitments. Follow the repository guidance before adding large new systems such as mobile, WASM, scripting, or editor functionality.
+Some of these targets are future architecture directions, not current feature commitments. Follow the repository guidance before adding large new systems such as mobile, WASM, scripting, editor functionality, or additional surface types.
 
 ## Contributor Rules of Thumb
 

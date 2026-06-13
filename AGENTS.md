@@ -1,6 +1,8 @@
 # Greenfield Agent Instructions
 
-This repository is the Greenfield UI engine, a C++20 UI-first engine for polished cross-platform application UIs.
+This repository is Greenfield, an open-source, C++20, SDK-first creative application engine.
+
+The Greenfield SDK is the reusable runtime/library developers build apps with. The monorepo contains SDK/runtime code, future Studio work, examples and sandbox apps, tools, docs, and tests.
 
 When modifying this repository, follow the coding standards in `docs/coding-standards.md`.
 
@@ -12,6 +14,19 @@ Important priorities:
 5. Keep cyclomatic complexity below 10 whenever practical.
 6. Prefer descriptive names over abbreviations.
 7. Avoid premature abstractions, but keep boundaries clean.
-8. Do not add large frameworks, scripting, ECS, editor systems, mobile support, or WASM support until explicitly requested.
-9. Keep the UI layer independent from WebGPU-specific details.
-10. Do not let widgets directly call WebGPU APIs.
+8. Design SDK-first: reusable runtime and library boundaries come before app-specific tooling.
+9. Keep UI code independent from SDL, Dawn, WebGPU, FreeType, and other concrete platform/rendering/font providers.
+10. Keep render commands renderer-agnostic.
+11. Keep platform implementations behind platform abstractions.
+12. Keep WebGPU-specific code isolated under its backend/module.
+13. Keep SDL-specific code isolated under its platform/startup presenter area.
+14. Future platform targets should add providers/backends rather than coupling SDK or UI code directly to concrete implementations.
+15. Do not add large frameworks, scripting, ECS, editor systems, or mobile support until explicitly requested.
+16. Do not implement WASM support unless explicitly requested for a later milestone, but preserve browser-hosted WebAssembly as a v0.1 target and architecture consideration in docs and boundaries.
+17. Do not let widgets directly call WebGPU APIs.
+
+## M0 Scope Guard
+
+M0 is documentation-only unless a tiny code/comment cleanup is needed for truthfulness.
+
+Do not implement Fast2D, Studio, CLI, Canvas2D, Scene3D, shader tools, hot reload, Python bindings, or Skia in M0.
