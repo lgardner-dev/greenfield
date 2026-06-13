@@ -1,6 +1,6 @@
 # Greenfield Architecture
 
-Greenfield is an open-source, C++20, SDK-first creative application engine. The current codebase is intentionally small, with narrow interfaces between core types, input, platform code, renderer-neutral commands, the current Dawn/WebGPU backend, and UI widgets.
+Greenfield is an open-source, C++20, SDK-first creative application engine. The current codebase is intentionally small, with narrow interfaces between core types, input, platform code, renderer-neutral commands, the current Dawn/WebGPU backend, the narrow Fast2D backend foundation, and UI widgets.
 
 This document describes the current layer boundaries. It should help contributors add features without accidentally coupling UI, platform, and renderer code.
 
@@ -68,10 +68,13 @@ The UI emits `RenderCommandList` objects made of simple commands such as filled 
 The renderer direction is split between current implementation and future baseline intent:
 
 - Render commands remain renderer-agnostic.
+- `greenfield_render_webgpu` is the current real WebGPU backend target.
+- `greenfield_webgpu` remains a compatibility alias for `greenfield_render_webgpu`.
 - The current Dawn/WebGPU backend is an implemented accelerated backend.
-- The current default build requires Dawn/WebGPU and FreeType because WebGPU is the only implemented real renderer backend.
+- The current default build requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer.
 - Greenfield should not be described as WebGPU-first.
-- Fast2D is the intended future default baseline renderer.
+- `greenfield_render_fast2d` is an implemented sibling backend foundation, not the default sandbox renderer.
+- Fast2D is the intended future default baseline renderer after later renderer selection/composition and presentation work.
 - WebGPU/Dawn should remain backend-specific in direction.
 - Skia may be considered later as an optional renderer/backend, but it is not the initial foundation.
 - Normal UI should not require WebGPU-specific concepts.
@@ -88,6 +91,21 @@ WebGPU and Dawn includes should stay in this layer. FreeType usage for the curre
 This backend-local FreeType ownership is intentional for the current WebGPU renderer. `greenfield_ui` and `greenfield_render` must stay free of SDL, Dawn/WebGPU, and FreeType dependencies while emitting renderer-agnostic text commands. Future renderer backends, such as `greenfield_render_fast2d`, may own their own text/font path or share a later renderer-neutral text service without changing UI or application code.
 
 `WebGpuContext` depends on `INativeSurfaceProvider`, not `SdlWindow`. This is an important boundary: SDL is only one possible provider of native surface handles.
+
+### `engine/render/fast2d`
+
+The Fast2D backend foundation lives under `engine/render/fast2d`:
+
+- `Fast2DRenderer` implements `IRenderer`.
+- It consumes renderer-neutral `RenderCommandList` commands.
+- It prepares backend-local filled-rectangle operations.
+- It handles clip pushes and pops, including observable clip underflow tracking.
+- It defers text rasterization for later backend or shared text/font work.
+- It can rasterize deterministic plain filled rectangles with clipping into a backend-owned CPU raster target.
+
+Fast2D currently preserves optional shape styling metadata such as corner radius, border color, and border thickness, but its CPU raster path draws only plain rectangle fills. Rounded corners, borders, antialiasing, richer shape rasterization, text/font sharing, platform presentation, and renderer selection/composition remain future work.
+
+Fast2D must stay free of SDL, Dawn/WebGPU, and FreeType includes. Dependency boundary tests cover `engine/render/fast2d` with the same concrete-dependency guard as core, input, render-neutral command types, and UI.
 
 ### `engine/ui`
 
@@ -113,6 +131,8 @@ The sandbox is the current demo application. It wires the layers together:
 - builds UI each frame
 - submits UI render commands to the renderer
 
+The sandbox is currently wired to `greenfield_render_webgpu`, not Fast2D.
+
 Application code may know about concrete implementations because it is the composition root. Shared engine layers should not take dependencies back on the sandbox.
 
 ## Dependency Direction
@@ -134,6 +154,10 @@ render/webgpu
   -> render commands
   -> platform native surface abstraction
 
+render/fast2d
+  -> render commands
+  -> core value types
+
 platform/sdl
   -> platform interfaces
   -> SDL3
@@ -150,6 +174,7 @@ The core rule is that platform and renderer details do not leak upward into UI o
 - Render commands must remain renderer-agnostic.
 - Renderer backends must be swappable.
 - WebGPU code must stay under `engine/render/webgpu`.
+- Fast2D code must stay under `engine/render/fast2d` and remain free of SDL, Dawn/WebGPU, and FreeType.
 - SDL code must stay in the SDL platform implementation and startup presenter area.
 - `WebGpuContext` depends on `INativeSurfaceProvider`, not `SdlWindow`.
 - Future targets should add new providers or backends rather than coupling directly to existing concrete implementations.
@@ -165,9 +190,9 @@ Future platform targets should add providers or backends rather than leaking pla
 
 ## Surface Direction
 
-Minimal SDK-level surface identity and bounds value types exist now for future interaction tree work. M2 also has a small hit-test/routing vocabulary for routing a point to a surface identity. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
+Minimal SDK-level surface identity and bounds value types exist now for future interaction tree work. The current foundation also has a small hit-test/routing vocabulary for routing a point to a surface identity. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
 
-Those systems are not part of M2. The current routing foundation is not a compositor, retained UI tree, event system, or full interaction tree. When richer systems arrive, the architectural intent is that they participate in one cohesive application experience without violating renderer or platform boundaries.
+Those systems are not part of the current foundation. The current routing foundation is not a compositor, retained UI tree, event system, or full interaction tree. When richer systems arrive, the architectural intent is that they participate in one cohesive application experience without violating renderer or platform boundaries.
 
 ## Renderer Flow
 
@@ -180,6 +205,8 @@ The current frame rendering path is:
 5. The WebGPU backend draws the frame and presents the surface.
 
 `RenderCommandList` is the contract between UI and rendering. Adding a new renderer should not require UI widgets to know which backend is active.
+
+The current Fast2D backend also consumes `RenderCommandList`, but it is limited to backend-local command preparation, clipped CPU rasterization for plain filled rectangles, and deferred text tracking. It does not present the sandbox surface.
 
 ## Input Flow
 

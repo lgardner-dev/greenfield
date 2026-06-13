@@ -25,8 +25,8 @@ Important priorities:
 16. Do not implement WASM support unless explicitly requested for a later milestone, but preserve browser-hosted WebAssembly as a v0.1 target and architecture consideration in docs and boundaries.
 17. Do not let widgets directly call WebGPU APIs.
 
-## M2 Scope Guard
+## M3 Scope Guard
 
-Current M2 work is limited to the minimal Surface and Interaction Tree foundation unless the user explicitly requests a different milestone or slice.
+Current M3 work is limited to the narrow Fast2D renderer foundation unless the user explicitly requests a different milestone or slice.
 
-Do not implement Fast2D, Studio, CLI, Canvas2D, Scene3D, shader tools, dashboards, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, or Skia as part of M2 guardrail/doc work.
+Fast2D may consume renderer-neutral render commands, prepare backend-local fill operations, rasterize deterministic plain filled rectangles with clipping, preserve optional shape styling metadata for later backend work, and defer text. Do not make Fast2D the default renderer or add renderer selection/composition, full text/font sharing, richer shape rasterization, rounded corners, borders, antialiasing, platform presentation, mixed-surface composition, Studio, CLI, Canvas2D, Scene3D, shader tools, dashboards, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, or Skia as part of M3 guardrail/doc work.
