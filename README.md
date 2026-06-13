@@ -12,23 +12,25 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Renderer-agnostic render commands that keep UI code independent from backend details
 - A current Dawn/WebGPU accelerated backend with clean ownership boundaries
 - UI widget, layout, input, text, and render command basics
+- Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
 - vcpkg manifest-mode as the default dependency path
 
 ## Direction
 
-- Fast2D is the intended future default baseline renderer, but it is not implemented in M0.
-- Dawn/WebGPU is the current implemented accelerated backend and should remain backend-specific and optional in the architecture direction.
+- Fast2D is the intended future default baseline renderer, but it is not implemented yet.
+- Dawn/WebGPU is the current implemented accelerated backend and should remain backend-specific in the architecture direction.
+- The current default build still requires Dawn/WebGPU and FreeType because WebGPU is the only implemented real renderer backend.
 - Skia may be considered later as an optional renderer/backend, but it is not the initial foundation.
-- Greenfield Studio is a future IDE/editor built on top of the SDK, not part of M0 implementation work.
-- Greenfield CLI is future tooling, not part of M0 implementation work.
+- Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M2 implementation work.
+- Greenfield CLI is future tooling, not part of current M2 implementation work.
 - Development can be Linux-first for v0.1 work, while preserving Linux, Windows, and browser-hosted WebAssembly as v0.1 release/export architecture considerations.
 - Exported Greenfield apps should be C++/CMake-based first.
 - Hot reload is not a core v0.1 requirement; fast incremental build UX matters more.
 
 ## Not In Scope Yet
 
-M0 is documentation and public positioning only. Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, hot reload, Python bindings, Skia integration, and Fast2D implementation are not in scope yet.
+The current M2 surface and interaction foundation is intentionally minimal. Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, Skia integration, and Fast2D implementation are not in scope yet.
 
 ## Build
 

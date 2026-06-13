@@ -25,8 +25,8 @@ Important priorities:
 16. Do not implement WASM support unless explicitly requested for a later milestone, but preserve browser-hosted WebAssembly as a v0.1 target and architecture consideration in docs and boundaries.
 17. Do not let widgets directly call WebGPU APIs.
 
-## M0 Scope Guard
+## M2 Scope Guard
 
-M0 is documentation-only unless a tiny code/comment cleanup is needed for truthfulness.
+Current M2 work is limited to the minimal Surface and Interaction Tree foundation unless the user explicitly requests a different milestone or slice.
 
-Do not implement Fast2D, Studio, CLI, Canvas2D, Scene3D, shader tools, hot reload, Python bindings, or Skia in M0.
+Do not implement Fast2D, Studio, CLI, Canvas2D, Scene3D, shader tools, dashboards, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, or Skia as part of M2 guardrail/doc work.
