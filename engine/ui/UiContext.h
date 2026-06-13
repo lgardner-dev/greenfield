@@ -115,16 +115,22 @@ private:
     [[nodiscard]] bool IsMouseReleaseConsumed() const noexcept;
     void ConsumeMousePress() noexcept;
     void ConsumeMouseRelease() noexcept;
+    [[nodiscard]] bool GetBooleanState(const UiId& controlId) const;
+    void SetBooleanState(const UiId& controlId, bool value);
+    void ToggleBooleanState(const UiId& controlId);
     [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
     [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
     [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
 
+    friend struct UiContextTestAccess;
+
     // Persistent runtime state survives BeginFrame so controls can respond across frames.
     Style _style{};
     std::optional<UiId> _activeControlId{};
     std::optional<UiId> _focusedControlId{};
+    std::unordered_map<UiId, bool, UiIdHash> _booleanStates{};
     std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
 
     // Per-frame state is rebuilt by BeginFrame from the current layout and input snapshot.

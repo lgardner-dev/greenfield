@@ -8,6 +8,29 @@
 #include "engine/ui/UiId.h"
 #include "tests/TestHelpers.h"
 
+namespace greenfield
+{
+
+struct UiContextTestAccess
+{
+    [[nodiscard]] static bool GetBooleanState(const UiContext& uiContext, const UiId& controlId)
+    {
+        return uiContext.GetBooleanState(controlId);
+    }
+
+    static void SetBooleanState(UiContext& uiContext, const UiId& controlId, bool value)
+    {
+        uiContext.SetBooleanState(controlId, value);
+    }
+
+    static void ToggleBooleanState(UiContext& uiContext, const UiId& controlId)
+    {
+        uiContext.ToggleBooleanState(controlId);
+    }
+};
+
+} // namespace greenfield
+
 namespace
 {
 
@@ -572,6 +595,56 @@ namespace
     return secondCommands.IsEmpty() && uiContext.HasFocus("persistent-control");
 }
 
+[[nodiscard]] bool TestBooleanStatePersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId controlId = MakeUiId("stateful-control");
+    if (UiContextTestAccess::GetBooleanState(uiContext, controlId))
+    {
+        return false;
+    }
+
+    UiContextTestAccess::SetBooleanState(uiContext, controlId, true);
+    uiContext.BeginFrame(MakeLayout());
+    const auto& firstCommands = uiContext.EndFrame();
+    if (!firstCommands.IsEmpty() || !UiContextTestAccess::GetBooleanState(uiContext, controlId))
+    {
+        return false;
+    }
+
+    UiContextTestAccess::ToggleBooleanState(uiContext, controlId);
+    uiContext.BeginFrame(MakeLayout());
+    const auto& secondCommands = uiContext.EndFrame();
+    return secondCommands.IsEmpty() && !UiContextTestAccess::GetBooleanState(uiContext, controlId);
+}
+
+[[nodiscard]] bool TestBooleanStateIsIndependentPerUiId()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId firstControlId = MakeUiId("first-stateful-control");
+    const UiId secondControlId = MakeUiId("second-stateful-control");
+
+    UiContextTestAccess::SetBooleanState(uiContext, firstControlId, true);
+    UiContextTestAccess::SetBooleanState(uiContext, secondControlId, false);
+    uiContext.BeginFrame(MakeLayout());
+    const auto& firstCommands = uiContext.EndFrame();
+    if (!firstCommands.IsEmpty() || !UiContextTestAccess::GetBooleanState(uiContext, firstControlId) ||
+        UiContextTestAccess::GetBooleanState(uiContext, secondControlId))
+    {
+        return false;
+    }
+
+    UiContextTestAccess::ToggleBooleanState(uiContext, secondControlId);
+    uiContext.BeginFrame(MakeLayout());
+    const auto& secondCommands = uiContext.EndFrame();
+    return secondCommands.IsEmpty() && UiContextTestAccess::GetBooleanState(uiContext, firstControlId) &&
+           UiContextTestAccess::GetBooleanState(uiContext, secondControlId);
+}
+
 [[nodiscard]] bool TestFocusIsIndependentFromActiveControlAndScrollState()
 {
     using namespace greenfield;
@@ -633,7 +706,8 @@ int main()
         !TestActiveControlIdentitySurvivesPressReleaseFrames() ||
         !TestOverlappingButtonPressIsConsumedByActiveControl() || !TestFocusDefaultsToEmpty() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
-        !TestFocusPersistsAcrossFrames() || !TestFocusIsIndependentFromActiveControlAndScrollState())
+        !TestFocusPersistsAcrossFrames() || !TestBooleanStatePersistsAcrossFrames() ||
+        !TestBooleanStateIsIndependentPerUiId() || !TestFocusIsIndependentFromActiveControlAndScrollState())
     {
         return EXIT_FAILURE;
     }

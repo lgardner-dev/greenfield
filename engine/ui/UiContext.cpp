@@ -472,6 +472,27 @@ void UiContext::ConsumeMouseRelease() noexcept
     _mouseReleaseConsumed = true;
 }
 
+bool UiContext::GetBooleanState(const UiId& controlId) const
+{
+    const auto booleanState = _booleanStates.find(controlId);
+    if (booleanState == _booleanStates.end())
+    {
+        return false;
+    }
+
+    return booleanState->second;
+}
+
+void UiContext::SetBooleanState(const UiId& controlId, bool value)
+{
+    _booleanStates[controlId] = value;
+}
+
+void UiContext::ToggleBooleanState(const UiId& controlId)
+{
+    SetBooleanState(controlId, !GetBooleanState(controlId));
+}
+
 Color UiContext::GetButtonColor(const UiId& buttonId, const Rect& bounds, const ButtonStyle& buttonStyle) const
 {
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
