@@ -284,6 +284,36 @@ UiSurface UiContext::GetRootSurface() const noexcept
     return MakeRootUiSurface(_layout);
 }
 
+void UiContext::RequestFocus(const UiId& controlId)
+{
+    _focusedControlId = controlId;
+}
+
+void UiContext::RequestFocus(const std::string& name)
+{
+    RequestFocus(MakeUiId(name));
+}
+
+void UiContext::ClearFocus() noexcept
+{
+    _focusedControlId.reset();
+}
+
+bool UiContext::HasFocus(const UiId& controlId) const noexcept
+{
+    return _focusedControlId.has_value() && _focusedControlId.value() == controlId;
+}
+
+bool UiContext::HasFocus(const std::string& name) const
+{
+    return HasFocus(MakeUiId(name));
+}
+
+const std::optional<UiId>& UiContext::FocusedControlId() const noexcept
+{
+    return _focusedControlId;
+}
+
 float UiContext::GetVerticalScrollOffset(const std::string& name) const
 {
     return GetVerticalScrollOffset(MakeUiId(name));

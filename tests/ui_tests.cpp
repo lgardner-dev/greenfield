@@ -484,6 +484,110 @@ namespace
     return !uiContext.Button("first-button", firstButtonBounds) && uiContext.Button("second-button", secondButtonBounds);
 }
 
+[[nodiscard]] bool TestFocusDefaultsToEmpty()
+{
+    using namespace greenfield;
+
+    const UiContext uiContext;
+    return !uiContext.FocusedControlId().has_value() && !uiContext.HasFocus("missing-control");
+}
+
+[[nodiscard]] bool TestRequestFocusByIdAndName()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId firstControlId = MakeUiId("first-control");
+
+    uiContext.RequestFocus(firstControlId);
+    if (!uiContext.HasFocus(firstControlId) || !uiContext.HasFocus("first-control") ||
+        !uiContext.FocusedControlId().has_value() || uiContext.FocusedControlId().value() != firstControlId)
+    {
+        return false;
+    }
+
+    uiContext.RequestFocus("second-control");
+    return !uiContext.HasFocus(firstControlId) && uiContext.HasFocus("second-control") &&
+           uiContext.FocusedControlId().has_value() &&
+           uiContext.FocusedControlId().value() == MakeUiId("second-control");
+}
+
+[[nodiscard]] bool TestClearFocusRemovesFocus()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-control");
+    uiContext.ClearFocus();
+
+    return !uiContext.FocusedControlId().has_value() && !uiContext.HasFocus("focused-control");
+}
+
+[[nodiscard]] bool TestFocusPersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("persistent-control");
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+    const auto& firstCommands = uiContext.EndFrame();
+    if (firstCommands.Size() != 1U || !uiContext.HasFocus("persistent-control"))
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const auto& secondCommands = uiContext.EndFrame();
+    return secondCommands.IsEmpty() && uiContext.HasFocus("persistent-control");
+}
+
+[[nodiscard]] bool TestFocusIsIndependentFromActiveButtonAndScrollState()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const Rect buttonBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{100.0f, 50.0f},
+    };
+    const Rect scrollPanelBounds{
+        .position = Vec2{140.0f, 20.0f},
+        .size = Vec2{120.0f, 80.0f},
+    };
+
+    uiContext.RequestFocus("focused-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Button("active-button", buttonBounds) || !uiContext.HasFocus("focused-control"))
+    {
+        return false;
+    }
+    const auto& buttonPressCommands = uiContext.EndFrame();
+    if (buttonPressCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    if (!uiContext.Button("active-button", buttonBounds) || !uiContext.HasFocus("focused-control"))
+    {
+        return false;
+    }
+    const auto& buttonReleaseCommands = uiContext.EndFrame();
+    if (buttonReleaseCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{150.0f, 30.0f}, .verticalScrollDelta = -1.0f});
+    const Rect scrolledContent = uiContext.BeginVerticalScrollPanel("scroll-panel", scrollPanelBounds, 200.0f);
+    uiContext.EndVerticalScrollPanel();
+    const auto& scrollCommands = uiContext.EndFrame();
+
+    return uiContext.HasFocus("focused-control") && uiContext.GetVerticalScrollOffset("scroll-panel") == 42.0f &&
+           scrolledContent.position.y == -22.0f && scrollCommands.Size() == 2U;
+}
+
 } // namespace
 
 int main()
@@ -496,7 +600,9 @@ int main()
         !TestEndFrameReturnsRendererNeutralCommands() || !TestTextEmitsRendererAgnosticCommand() ||
         !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestScrollOffsetsPersistByPanelIdentity() ||
         !TestButtonHitAndClickBehavior() || !TestLayoutGeneratedButtonHitRegion() ||
-        !TestActiveButtonIdentitySurvivesPressReleaseFrames())
+        !TestActiveButtonIdentitySurvivesPressReleaseFrames() || !TestFocusDefaultsToEmpty() ||
+        !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() || !TestFocusPersistsAcrossFrames() ||
+        !TestFocusIsIndependentFromActiveButtonAndScrollState())
     {
         return EXIT_FAILURE;
     }

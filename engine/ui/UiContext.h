@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -76,6 +77,12 @@ public:
     [[nodiscard]] const Style& GetStyle() const noexcept;
     [[nodiscard]] const Layout& GetLayout() const noexcept;
     [[nodiscard]] UiSurface GetRootSurface() const noexcept;
+    void RequestFocus(const UiId& controlId);
+    void RequestFocus(const std::string& name);
+    void ClearFocus() noexcept;
+    [[nodiscard]] bool HasFocus(const UiId& controlId) const noexcept;
+    [[nodiscard]] bool HasFocus(const std::string& name) const;
+    [[nodiscard]] const std::optional<UiId>& FocusedControlId() const noexcept;
     [[nodiscard]] float GetVerticalScrollOffset(const std::string& name) const;
 
 private:
@@ -110,6 +117,7 @@ private:
     // Persistent runtime state survives BeginFrame so controls can respond across frames.
     Style _style{};
     UiId _activeButtonId{};
+    std::optional<UiId> _focusedControlId{};
     std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
 
     // Per-frame state is rebuilt by BeginFrame from the current layout and input snapshot.
