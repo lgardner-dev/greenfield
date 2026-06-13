@@ -107,13 +107,16 @@ private:
     [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
 
+    // Persistent runtime state survives BeginFrame so controls can respond across frames.
     Style _style{};
+    UiId _activeButtonId{};
+    std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
+
+    // Per-frame state is rebuilt by BeginFrame from the current layout and input snapshot.
     Layout _layout{};
     InputState _inputState{};
-    UiId _activeButtonId{};
     std::vector<LayoutFrame> _layoutStack{};
     std::vector<ScrollPanelFrame> _scrollPanelStack{};
-    std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
     RenderCommandList _renderCommands{};
 };
 

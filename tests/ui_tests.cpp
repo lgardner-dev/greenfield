@@ -183,6 +183,69 @@ namespace
            unchangedCommands.Commands()[0].cornerRadius == surfaceAwareCommands.Commands()[0].cornerRadius;
 }
 
+[[nodiscard]] bool TestBeginFrameClearsPreviousFrameCommands()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& previousCommands = uiContext.EndFrame();
+    if (previousCommands.Size() != 1U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const auto& currentCommands = uiContext.EndFrame();
+    return currentCommands.IsEmpty();
+}
+
+[[nodiscard]] bool TestBeginFrameResetsLayoutState()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{40.0f, 50.0f}, .size = Vec2{200.0f, 100.0f}},
+        .padding = 10.0f,
+        .itemSize = Vec2{80.0f, 24.0f},
+    });
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+    const auto& nestedCommands = uiContext.EndFrame();
+    if (nestedCommands.Size() != 1U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& resetCommands = uiContext.EndFrame();
+    return resetCommands.Size() == 1U &&
+           RectanglesMatch(resetCommands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{12.0f, 12.0f}, .size = Vec2{616.0f, 48.0f}});
+}
+
+[[nodiscard]] bool TestEndFrameReturnsRendererNeutralCommands()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.DrawFilledRectangle(Rect{.position = Vec2{4.0f, 8.0f}, .size = Vec2{24.0f, 32.0f}},
+                                  Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const RenderCommandList& commands = uiContext.EndFrame();
+    return commands.Size() == 1U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{4.0f, 8.0f}, .size = Vec2{24.0f, 32.0f}});
+}
+
 [[nodiscard]] bool TestTextEmitsRendererAgnosticCommand()
 {
     using namespace greenfield;
@@ -239,6 +302,48 @@ namespace
     scrollContext.EndVerticalScrollPanel();
     const auto& unchangedScrollCommands = scrollContext.EndFrame();
     return scrollContext.GetVerticalScrollOffset("scroll-test") == 0.0f && unchangedContent.position.y == 30.0f && unchangedScrollCommands.Size() == 2U;
+}
+
+[[nodiscard]] bool TestScrollOffsetsPersistByPanelIdentity()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const Rect scrollPanelBounds{
+        .position = Vec2{20.0f, 30.0f},
+        .size = Vec2{120.0f, 80.0f},
+    };
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{40.0f, 50.0f}, .verticalScrollDelta = -1.0f});
+    const Rect initialContent = uiContext.BeginVerticalScrollPanel("scroll-a", scrollPanelBounds, 200.0f);
+    uiContext.EndVerticalScrollPanel();
+    const auto& initialCommands = uiContext.EndFrame();
+    if (initialContent.position.y != -12.0f || initialCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const Rect persistedContent = uiContext.BeginVerticalScrollPanel("scroll-a", scrollPanelBounds, 200.0f);
+    uiContext.EndVerticalScrollPanel();
+    const auto& persistedCommands = uiContext.EndFrame();
+    if (persistedCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const Rect separateContent = uiContext.BeginVerticalScrollPanel("scroll-b", scrollPanelBounds, 200.0f);
+    uiContext.EndVerticalScrollPanel();
+    const auto& separateCommands = uiContext.EndFrame();
+    if (separateCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    return uiContext.GetVerticalScrollOffset("scroll-a") == 42.0f &&
+           uiContext.GetVerticalScrollOffset("scroll-b") == 0.0f && persistedContent.position.y == -12.0f &&
+           separateContent.position.y == 30.0f;
 }
 
 [[nodiscard]] bool TestButtonHitAndClickBehavior()
@@ -328,6 +433,57 @@ namespace
     return buttonContext.Button("layout-button", buttonStyle);
 }
 
+[[nodiscard]] bool TestActiveButtonIdentitySurvivesPressReleaseFrames()
+{
+    using namespace greenfield;
+
+    const Rect firstButtonBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{100.0f, 50.0f},
+    };
+    const Rect secondButtonBounds{
+        .position = Vec2{140.0f, 20.0f},
+        .size = Vec2{100.0f, 50.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Button("first-button", firstButtonBounds) || uiContext.Button("second-button", secondButtonBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{150.0f, 30.0f}, .leftMouseButtonReleased = true});
+    if (uiContext.Button("first-button", firstButtonBounds) || uiContext.Button("second-button", secondButtonBounds))
+    {
+        return false;
+    }
+    const auto& mismatchedReleaseCommands = uiContext.EndFrame();
+    if (mismatchedReleaseCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{150.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Button("first-button", firstButtonBounds) || uiContext.Button("second-button", secondButtonBounds))
+    {
+        return false;
+    }
+    const auto& secondPressCommands = uiContext.EndFrame();
+    if (secondPressCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{150.0f, 30.0f}, .leftMouseButtonReleased = true});
+    return !uiContext.Button("first-button", firstButtonBounds) && uiContext.Button("second-button", secondButtonBounds);
+}
+
 } // namespace
 
 int main()
@@ -336,9 +492,11 @@ int main()
         !TestRootSurfaceMatchesImmediateFrameBounds() || !TestInputPointRoutesToRootUiSurface() ||
         !TestInputPointOutsideRootUiSurfaceDoesNotRoute() || !TestUiIdUsesExactStringIdentity() ||
         !TestUiIdCanKeyStateMaps() || !TestRootSurfaceAccessDoesNotChangeCommandEmission() ||
-        !TestTextEmitsRendererAgnosticCommand() ||
-        !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestButtonHitAndClickBehavior() ||
-        !TestLayoutGeneratedButtonHitRegion())
+        !TestBeginFrameClearsPreviousFrameCommands() || !TestBeginFrameResetsLayoutState() ||
+        !TestEndFrameReturnsRendererNeutralCommands() || !TestTextEmitsRendererAgnosticCommand() ||
+        !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestScrollOffsetsPersistByPanelIdentity() ||
+        !TestButtonHitAndClickBehavior() || !TestLayoutGeneratedButtonHitRegion() ||
+        !TestActiveButtonIdentitySurvivesPressReleaseFrames())
     {
         return EXIT_FAILURE;
     }
