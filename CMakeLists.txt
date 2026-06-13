@@ -63,6 +63,8 @@ add_library(greenfield_render_webgpu
 )
 add_library(greenfield_webgpu ALIAS greenfield_render_webgpu)
 target_include_directories(greenfield_render_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
+# The implemented WebGPU renderer currently owns Dawn/WebGPU and backend-local
+# FreeType text rendering; greenfield_ui and greenfield_render stay renderer-agnostic.
 target_link_libraries(greenfield_render_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
 greenfield_enable_warnings(greenfield_render_webgpu)
 

@@ -66,6 +66,7 @@ The renderer direction is split between current implementation and future baseli
 
 - Render commands remain renderer-agnostic.
 - The current Dawn/WebGPU backend is an implemented accelerated backend.
+- The current default build requires Dawn/WebGPU and FreeType because WebGPU is the only implemented real renderer backend.
 - Greenfield should not be described as WebGPU-first.
 - Fast2D is the intended future default baseline renderer.
 - WebGPU/Dawn should remain backend-specific and optional in direction.
@@ -80,6 +81,8 @@ The WebGPU backend lives under `engine/render/webgpu`:
 - `WebGpuRenderer` implements the renderer flow for submitted render commands.
 
 WebGPU and Dawn includes should stay in this layer. FreeType usage for the current WebGPU text path is also contained here. UI code should never call WebGPU APIs directly.
+
+This backend-local FreeType ownership is intentional for M1. `greenfield_ui` and `greenfield_render` must stay free of SDL, Dawn/WebGPU, and FreeType dependencies while emitting renderer-agnostic text commands. Future renderer backends, such as `greenfield_render_fast2d`, may own their own text/font path or share a later renderer-neutral text service without changing UI or application code.
 
 `WebGpuContext` depends on `INativeSurfaceProvider`, not `SdlWindow`. This is an important boundary: SDL is only one possible provider of native surface handles.
 
