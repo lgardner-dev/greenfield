@@ -209,6 +209,29 @@ namespace
            PixelMatches(renderer, 0U, 0U, Color{}) && PixelMatches(renderer, 3U, 3U, Color{});
 }
 
+[[nodiscard]] bool TestOptionalFillFieldsAreDeferredByRasterPath()
+{
+    using namespace greenfield;
+    using greenfield::tests::ColorsMatch;
+
+    const Color fillColor{0.1f, 0.3f, 0.8f, 1.0f};
+    const Color borderColor{0.9f, 0.1f, 0.1f, 1.0f};
+    Fast2DRenderer renderer{4U, 4U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{4.0f, 4.0f}},
+                                    fillColor, 2.0f, borderColor, 1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    const auto fillOperations = renderer.PreparedFillOperations();
+    return renderer.PreparedFillOperationCount() == 1U && fillOperations[0].cornerRadius == 2.0f &&
+           ColorsMatch(fillOperations[0].borderColor, borderColor) && fillOperations[0].borderThickness == 1.0f &&
+           PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 0U, fillColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor) && PixelMatches(renderer, 3U, 3U, fillColor);
+}
+
 [[nodiscard]] bool TestLaterFillRectangleOverridesEarlierRasterPixels()
 {
     using namespace greenfield;
@@ -357,10 +380,11 @@ int main()
         !TestMultipleFillRectanglesArePreparedInOrder() || !TestClipStackAffectsPreparedFillOperations() ||
         !TestClipUnderflowIsSafeAndObservable() || !TestDrawTextIsDeferred() ||
         !TestBeginFrameResetsPreparedState() || !TestEndFrameCompletesWithoutPlatformDependencies() ||
-        !TestFillRectangleWritesRasterPixels() || !TestLaterFillRectangleOverridesEarlierRasterPixels() ||
-        !TestClipLimitsRasterPixels() || !TestPopClipRestoresPreviousRasterClip() ||
-        !TestOutOfBoundsRectanglesAreClippedToRasterTarget() || !TestClipOutsideRasterTargetIsClippedSafely() ||
-        !TestDrawTextDoesNotAlterRasterPixels() || !TestBeginFrameResetsRasterPixels())
+        !TestFillRectangleWritesRasterPixels() || !TestOptionalFillFieldsAreDeferredByRasterPath() ||
+        !TestLaterFillRectangleOverridesEarlierRasterPixels() || !TestClipLimitsRasterPixels() ||
+        !TestPopClipRestoresPreviousRasterClip() || !TestOutOfBoundsRectanglesAreClippedToRasterTarget() ||
+        !TestClipOutsideRasterTargetIsClippedSafely() || !TestDrawTextDoesNotAlterRasterPixels() ||
+        !TestBeginFrameResetsRasterPixels())
     {
         return EXIT_FAILURE;
     }
