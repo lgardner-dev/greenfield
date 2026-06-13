@@ -710,47 +710,6 @@ WebGpuRenderer::TextVertex WebGpuRenderer::MakeTextVertex(float pixelPositionX, 
     };
 }
 
-void WebGpuRenderer::BuildRectangleVertices()
-{
-    _rectangleVertices.clear();
-    if (_context->GetSurfaceWidth() == 0 || _context->GetSurfaceHeight() == 0)
-    {
-        return;
-    }
-
-    _rectangleVertices.reserve(_submittedCommands.Size() * 6);
-
-    for (const RenderCommand& renderCommand : _submittedCommands.Commands())
-    {
-        if (renderCommand.type != RenderCommandType::FillRectangle || !HasPositiveArea(renderCommand.rectangle))
-        {
-            continue;
-        }
-
-        const Rect& rectangle = renderCommand.rectangle;
-        const float left = ConvertPixelXToClipSpace(rectangle.position.x, _context->GetSurfaceWidth());
-        const float right = ConvertPixelXToClipSpace(rectangle.position.x + rectangle.size.x, _context->GetSurfaceWidth());
-        const float top = ConvertPixelYToClipSpace(rectangle.position.y, _context->GetSurfaceHeight());
-        const float bottom = ConvertPixelYToClipSpace(rectangle.position.y + rectangle.size.y, _context->GetSurfaceHeight());
-
-        const RectangleVertex topLeft =
-            MakeRectangleVertex(left, top, rectangle.position.x, rectangle.position.y, renderCommand);
-        const RectangleVertex topRight = MakeRectangleVertex(
-            right, top, rectangle.position.x + rectangle.size.x, rectangle.position.y, renderCommand);
-        const RectangleVertex bottomLeft = MakeRectangleVertex(
-            left, bottom, rectangle.position.x, rectangle.position.y + rectangle.size.y, renderCommand);
-        const RectangleVertex bottomRight =
-            MakeRectangleVertex(right, bottom, rectangle.position.x + rectangle.size.x, rectangle.position.y + rectangle.size.y, renderCommand);
-
-        _rectangleVertices.push_back(topLeft);
-        _rectangleVertices.push_back(bottomLeft);
-        _rectangleVertices.push_back(topRight);
-        _rectangleVertices.push_back(topRight);
-        _rectangleVertices.push_back(bottomLeft);
-        _rectangleVertices.push_back(bottomRight);
-    }
-}
-
 void WebGpuRenderer::AppendTextVertices(const RenderCommand& renderCommand, const FontAtlas& fontAtlas)
 {
     if (_context->GetSurfaceWidth() == 0 || _context->GetSurfaceHeight() == 0 || renderCommand.text.empty())
@@ -832,78 +791,6 @@ void WebGpuRenderer::EnsureTextVertexBuffer(std::size_t requiredSize)
     _textVertexBufferSize = requiredSize;
 }
 
-void WebGpuRenderer::DrawRectangles(wgpu::RenderPassEncoder& renderPass)
-{
-    BuildRectangleVertices();
-    if (_rectangleVertices.empty())
-    {
-        return;
-    }
-
-    EnsureRectanglePipeline();
-
-    const std::size_t vertexDataSize = _rectangleVertices.size() * sizeof(RectangleVertex);
-    EnsureVertexBuffer(vertexDataSize);
-
-    _context->GetQueue().WriteBuffer(_rectangleVertexBuffer, 0, _rectangleVertices.data(), vertexDataSize);
-
-    renderPass.SetPipeline(_rectanglePipeline);
-    renderPass.SetVertexBuffer(0, _rectangleVertexBuffer, 0, vertexDataSize);
-    renderPass.Draw(static_cast<std::uint32_t>(_rectangleVertices.size()));
-}
-
-void WebGpuRenderer::DrawText(wgpu::RenderPassEncoder& renderPass)
-{
-    EnsureTextPipeline();
-    _textVertices.clear();
-    _textBatches.clear();
-
-    for (const RenderCommand& renderCommand : _submittedCommands.Commands())
-    {
-        if (renderCommand.type != RenderCommandType::DrawText || !HasPositiveArea(renderCommand.rectangle))
-        {
-            continue;
-        }
-
-        FontAtlas* fontAtlas = GetOrCreateFontAtlas(renderCommand.fontSize);
-        if (fontAtlas == nullptr)
-        {
-            continue;
-        }
-
-        const auto firstVertex = static_cast<std::uint32_t>(_textVertices.size());
-        AppendTextVertices(renderCommand, *fontAtlas);
-        const auto vertexCount = static_cast<std::uint32_t>(_textVertices.size()) - firstVertex;
-        if (vertexCount == 0)
-        {
-            continue;
-        }
-
-        _textBatches.push_back(TextBatch{
-            .bindGroup = fontAtlas->bindGroup,
-            .firstVertex = firstVertex,
-            .vertexCount = vertexCount,
-        });
-    }
-
-    if (_textVertices.empty())
-    {
-        return;
-    }
-
-    const std::size_t vertexDataSize = _textVertices.size() * sizeof(TextVertex);
-    EnsureTextVertexBuffer(vertexDataSize);
-    _context->GetQueue().WriteBuffer(_textVertexBuffer, 0, _textVertices.data(), vertexDataSize);
-
-    renderPass.SetPipeline(_textPipeline);
-    renderPass.SetVertexBuffer(0, _textVertexBuffer, 0, vertexDataSize);
-    for (const TextBatch& textBatch : _textBatches)
-    {
-        renderPass.SetBindGroup(0, textBatch.bindGroup);
-        renderPass.Draw(textBatch.vertexCount, 1, textBatch.firstVertex);
-    }
-}
-
 void WebGpuRenderer::DrawRenderCommands(wgpu::RenderPassEncoder& renderPass)
 {
     BuildRenderBatches();
@@ -918,7 +805,7 @@ void WebGpuRenderer::DrawRenderCommands(wgpu::RenderPassEncoder& renderPass)
 
 void WebGpuRenderer::BuildRenderBatches()
 {
-    std::vector<Rect> clipStack;
+    std::vector<Rect> clipRectangles;
     _rectangleVertices.clear();
     _textVertices.clear();
     _drawBatches.clear();
@@ -927,22 +814,23 @@ void WebGpuRenderer::BuildRenderBatches()
     {
         if (renderCommand.type == RenderCommandType::PushClip)
         {
-            const Rect clipRectangle = clipStack.empty() ? renderCommand.rectangle
-                                                         : IntersectRectangles(clipStack.back(), renderCommand.rectangle);
-            clipStack.push_back(clipRectangle);
+            const Rect clipRectangle = clipRectangles.empty()
+                                           ? renderCommand.rectangle
+                                           : IntersectRectangles(clipRectangles.back(), renderCommand.rectangle);
+            clipRectangles.push_back(clipRectangle);
             continue;
         }
 
         if (renderCommand.type == RenderCommandType::PopClip)
         {
-            if (!clipStack.empty())
+            if (!clipRectangles.empty())
             {
-                clipStack.pop_back();
+                clipRectangles.pop_back();
             }
             continue;
         }
 
-        if (!clipStack.empty() && !HasPositiveArea(clipStack.back()))
+        if (!clipRectangles.empty() && !HasPositiveArea(clipRectangles.back()))
         {
             continue;
         }
@@ -959,8 +847,8 @@ void WebGpuRenderer::BuildRenderBatches()
 
             _drawBatches.push_back(DrawBatch{
                 .type = RenderCommandType::FillRectangle,
-                .hasClip = !clipStack.empty(),
-                .clipRectangle = clipStack.empty() ? Rect{} : clipStack.back(),
+                .hasClip = !clipRectangles.empty(),
+                .clipRectangle = clipRectangles.empty() ? Rect{} : clipRectangles.back(),
                 .bindGroup = {},
                 .firstVertex = firstVertex,
                 .vertexCount = vertexCount,
@@ -984,8 +872,8 @@ void WebGpuRenderer::BuildRenderBatches()
 
             _drawBatches.push_back(DrawBatch{
                 .type = RenderCommandType::DrawText,
-                .hasClip = !clipStack.empty(),
-                .clipRectangle = clipStack.empty() ? Rect{} : clipStack.back(),
+                .hasClip = !clipRectangles.empty(),
+                .clipRectangle = clipRectangles.empty() ? Rect{} : clipRectangles.back(),
                 .bindGroup = fontAtlas->bindGroup,
                 .firstVertex = firstVertex,
                 .vertexCount = vertexCount,
@@ -1081,57 +969,6 @@ void WebGpuRenderer::DrawPreparedBatch(wgpu::RenderPassEncoder& renderPass, cons
         renderPass.SetBindGroup(0, drawBatch.bindGroup);
         renderPass.Draw(drawBatch.vertexCount);
     }
-}
-
-void WebGpuRenderer::DrawRectangleCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand)
-{
-    _rectangleVertices.clear();
-    AppendRectangleVertices(renderCommand);
-    if (_rectangleVertices.empty())
-    {
-        return;
-    }
-
-    EnsureRectanglePipeline();
-
-    const std::size_t vertexDataSize = _rectangleVertices.size() * sizeof(RectangleVertex);
-    EnsureVertexBuffer(vertexDataSize);
-
-    _context->GetQueue().WriteBuffer(_rectangleVertexBuffer, 0, _rectangleVertices.data(), vertexDataSize);
-
-    renderPass.SetPipeline(_rectanglePipeline);
-    renderPass.SetVertexBuffer(0, _rectangleVertexBuffer, 0, vertexDataSize);
-    renderPass.Draw(static_cast<std::uint32_t>(_rectangleVertices.size()));
-}
-
-void WebGpuRenderer::DrawTextCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand)
-{
-    if (!HasPositiveArea(renderCommand.rectangle) || renderCommand.text.empty())
-    {
-        return;
-    }
-
-    FontAtlas* fontAtlas = GetOrCreateFontAtlas(renderCommand.fontSize);
-    if (fontAtlas == nullptr)
-    {
-        return;
-    }
-
-    _textVertices.clear();
-    AppendTextVertices(renderCommand, *fontAtlas);
-    if (_textVertices.empty())
-    {
-        return;
-    }
-
-    const std::size_t vertexDataSize = _textVertices.size() * sizeof(TextVertex);
-    EnsureTextVertexBuffer(vertexDataSize);
-    _context->GetQueue().WriteBuffer(_textVertexBuffer, 0, _textVertices.data(), vertexDataSize);
-
-    renderPass.SetPipeline(_textPipeline);
-    renderPass.SetVertexBuffer(0, _textVertexBuffer, 0, vertexDataSize);
-    renderPass.SetBindGroup(0, fontAtlas->bindGroup);
-    renderPass.Draw(static_cast<std::uint32_t>(_textVertices.size()));
 }
 
 void WebGpuRenderer::ApplyFullFrameScissor(wgpu::RenderPassEncoder& renderPass) const

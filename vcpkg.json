@@ -10,8 +10,6 @@
       ]
     },
     "dawn",
-    "freetype",
-    "glm",
-    "fmt"
+    "freetype"
   ]
 }

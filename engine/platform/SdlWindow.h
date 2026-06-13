@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "engine/platform/IWindow.h"
@@ -8,6 +9,11 @@ struct SDL_Window;
 
 namespace greenfield
 {
+
+struct SdlWindowDeleter
+{
+    void operator()(SDL_Window* window) const noexcept;
+};
 
 class SdlWindow final : public IWindow
 {
@@ -36,7 +42,7 @@ private:
     void UpdateWindowSize();
 
     std::string _title;
-    SDL_Window* _window{nullptr};
+    std::unique_ptr<SDL_Window, SdlWindowDeleter> _window;
     int _width{0};
     int _height{0};
     bool _shouldClose{false};

@@ -167,22 +167,23 @@ void WebGpuContext::RequestAdapter()
     options.powerPreference = wgpu::PowerPreference::HighPerformance;
     options.compatibleSurface = _surface;
 
-    AdapterRequestResult result{};
-    auto callback = [&result](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message) {
+    AdapterRequestResult adapterRequestResult{};
+    auto callback = [&adapterRequestResult](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message) {
         if (status != wgpu::RequestAdapterStatus::Success)
         {
-            result.errorMessage = ToString(message);
+            adapterRequestResult.errorMessage = ToString(message);
             return;
         }
 
-        result.adapter = adapter;
+        adapterRequestResult.adapter = adapter;
     };
 
     const wgpu::Future future = _instance.RequestAdapter(&options, wgpu::CallbackMode::WaitAnyOnly, callback);
     _instance.WaitAny(future, std::numeric_limits<std::uint64_t>::max());
 
-    _adapter = result.adapter;
-    ThrowIfFalse(_adapter != nullptr, "Failed to get a compatible WebGPU adapter: " + result.errorMessage);
+    _adapter = adapterRequestResult.adapter;
+    ThrowIfFalse(_adapter != nullptr,
+                 "Failed to get a compatible WebGPU adapter: " + adapterRequestResult.errorMessage);
 }
 
 void WebGpuContext::RequestDevice()
@@ -191,22 +192,22 @@ void WebGpuContext::RequestDevice()
     descriptor.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous,
                                      [](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView) {});
 
-    DeviceRequestResult result{};
-    auto callback = [&result](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message) {
+    DeviceRequestResult deviceRequestResult{};
+    auto callback = [&deviceRequestResult](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message) {
         if (status != wgpu::RequestDeviceStatus::Success)
         {
-            result.errorMessage = ToString(message);
+            deviceRequestResult.errorMessage = ToString(message);
             return;
         }
 
-        result.device = device;
+        deviceRequestResult.device = device;
     };
 
     const wgpu::Future future = _adapter.RequestDevice(&descriptor, wgpu::CallbackMode::WaitAnyOnly, callback);
     _instance.WaitAny(future, std::numeric_limits<std::uint64_t>::max());
 
-    _device = result.device;
-    ThrowIfFalse(_device != nullptr, "Failed to get WebGPU device: " + result.errorMessage);
+    _device = deviceRequestResult.device;
+    ThrowIfFalse(_device != nullptr, "Failed to get WebGPU device: " + deviceRequestResult.errorMessage);
 
     _queue = _device.GetQueue();
     ThrowIfFalse(_queue != nullptr, "Failed to get WebGPU device queue.");

@@ -70,13 +70,6 @@ private:
         float lineHeight{0.0f};
     };
 
-    struct TextBatch
-    {
-        wgpu::BindGroup bindGroup;
-        std::uint32_t firstVertex{0};
-        std::uint32_t vertexCount{0};
-    };
-
     struct ScissorRectangle
     {
         std::uint32_t x{0};
@@ -103,19 +96,14 @@ private:
                                                       const RenderCommand& renderCommand) const noexcept;
     [[nodiscard]] TextVertex MakeTextVertex(float pixelPositionX, float pixelPositionY, float textureCoordinateX,
                                             float textureCoordinateY, const Color& color) const noexcept;
-    void BuildRectangleVertices();
     void AppendTextVertices(const RenderCommand& renderCommand, const FontAtlas& fontAtlas);
     void EnsureVertexBuffer(std::size_t requiredSize);
     void EnsureTextVertexBuffer(std::size_t requiredSize);
-    void DrawRectangles(wgpu::RenderPassEncoder& renderPass);
-    void DrawText(wgpu::RenderPassEncoder& renderPass);
     void DrawRenderCommands(wgpu::RenderPassEncoder& renderPass);
     void BuildRenderBatches();
     void AppendRectangleVertices(const RenderCommand& renderCommand);
     void WritePreparedVertexBuffers();
     void DrawPreparedBatch(wgpu::RenderPassEncoder& renderPass, const DrawBatch& drawBatch);
-    void DrawRectangleCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand);
-    void DrawTextCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand);
     void ApplyFullFrameScissor(wgpu::RenderPassEncoder& renderPass) const;
     void ApplyClipScissor(wgpu::RenderPassEncoder& renderPass, const Rect& clipRectangle) const;
     [[nodiscard]] ScissorRectangle MakeScissorRectangle(const Rect& clipRectangle) const noexcept;
@@ -132,7 +120,6 @@ private:
     wgpu::TextureFormat _textPipelineFormat{wgpu::TextureFormat::Undefined};
     std::vector<RectangleVertex> _rectangleVertices;
     std::vector<TextVertex> _textVertices;
-    std::vector<TextBatch> _textBatches;
     std::vector<DrawBatch> _drawBatches;
     std::unordered_map<int, FontAtlas> _fontAtlases;
     std::uint64_t _rectangleVertexBufferSize{0};
