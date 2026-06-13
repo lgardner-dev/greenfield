@@ -34,7 +34,7 @@ void UiContext::BeginFrame(const Layout& layout, const InputState& inputState)
 
     if (!_inputState.leftMouseButtonDown && !_inputState.leftMouseButtonReleased)
     {
-        _activeButtonName.clear();
+        _activeButtonId = UiId{};
     }
 }
 
@@ -97,10 +97,11 @@ void UiContext::DrawText(const std::string& text, const Rect& bounds, float font
 
 Rect UiContext::BeginVerticalScrollPanel(const std::string& name, const Rect& bounds, float contentHeight)
 {
-    const float scrollOffset = GetClampedScrollOffset(name, bounds, contentHeight);
+    const UiId panelId = MakeUiId(name);
+    const float scrollOffset = GetClampedScrollOffset(panelId, bounds, contentHeight);
     _renderCommands.PushClip(bounds);
     _scrollPanelStack.push_back(ScrollPanelFrame{
-        .name = name,
+        .id = panelId,
         .bounds = bounds,
     });
 
@@ -233,25 +234,26 @@ bool UiContext::Button(const std::string& name, const Rect& bounds, const Button
 bool UiContext::Button(const std::string& name, const std::string& label, const Rect& bounds,
                        const ButtonStyle& buttonStyle)
 {
+    const UiId buttonId = MakeUiId(name);
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     if (isHovered && _inputState.leftMouseButtonPressed)
     {
-        _activeButtonName = name;
+        _activeButtonId = buttonId;
     }
 
-    const bool isClicked = isHovered && IsButtonActive(name) && _inputState.leftMouseButtonReleased;
+    const bool isClicked = isHovered && IsButtonActive(buttonId) && _inputState.leftMouseButtonReleased;
     DrawRectangle(bounds,
                   RectangleStyle{
-                      .fillColor = GetButtonColor(name, bounds, buttonStyle),
+                      .fillColor = GetButtonColor(buttonId, bounds, buttonStyle),
                       .cornerRadius = buttonStyle.cornerRadius,
                       .borderColor = buttonStyle.border,
                       .borderThickness = buttonStyle.borderThickness,
                   });
     DrawButtonLabel(label, bounds, buttonStyle);
 
-    if (IsButtonActive(name) && _inputState.leftMouseButtonReleased)
+    if (IsButtonActive(buttonId) && _inputState.leftMouseButtonReleased)
     {
-        _activeButtonName.clear();
+        _activeButtonId = UiId{};
     }
 
     return isClicked;
@@ -284,7 +286,12 @@ UiSurface UiContext::GetRootSurface() const noexcept
 
 float UiContext::GetVerticalScrollOffset(const std::string& name) const
 {
-    const auto scrollOffset = _verticalScrollOffsets.find(name);
+    return GetVerticalScrollOffset(MakeUiId(name));
+}
+
+float UiContext::GetVerticalScrollOffset(const UiId& panelId) const
+{
+    const auto scrollOffset = _verticalScrollOffsets.find(panelId);
     if (scrollOffset == _verticalScrollOffsets.end())
     {
         return 0.0f;
@@ -390,15 +397,15 @@ void UiContext::AdvanceLayoutCursor(LayoutFrame& frame, const Vec2& itemSize) no
     frame.cursor.x += itemSize.x + frame.gap;
 }
 
-bool UiContext::IsButtonActive(const std::string& name) const
+bool UiContext::IsButtonActive(const UiId& buttonId) const
 {
-    return _activeButtonName == name;
+    return _activeButtonId == buttonId;
 }
 
-Color UiContext::GetButtonColor(const std::string& name, const Rect& bounds, const ButtonStyle& buttonStyle) const
+Color UiContext::GetButtonColor(const UiId& buttonId, const Rect& bounds, const ButtonStyle& buttonStyle) const
 {
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
-    if (IsButtonActive(name) && _inputState.leftMouseButtonDown)
+    if (IsButtonActive(buttonId) && _inputState.leftMouseButtonDown)
     {
         return buttonStyle.pressed;
     }
@@ -411,17 +418,17 @@ Color UiContext::GetButtonColor(const std::string& name, const Rect& bounds, con
     return buttonStyle.normal;
 }
 
-float UiContext::GetClampedScrollOffset(const std::string& name, const Rect& bounds, float contentHeight)
+float UiContext::GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight)
 {
     const float maximumScrollOffset = contentHeight > bounds.size.y ? contentHeight - bounds.size.y : 0.0f;
-    float scrollOffset = GetVerticalScrollOffset(name);
+    float scrollOffset = GetVerticalScrollOffset(panelId);
     if (ContainsPoint(bounds, _inputState.mousePosition))
     {
         scrollOffset -= _inputState.verticalScrollDelta * MouseWheelScrollPixels;
     }
 
     scrollOffset = ClampLayoutValue(scrollOffset, 0.0f, maximumScrollOffset);
-    _verticalScrollOffsets[name] = scrollOffset;
+    _verticalScrollOffsets[panelId] = scrollOffset;
     return scrollOffset;
 }
 

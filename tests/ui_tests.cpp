@@ -1,9 +1,11 @@
 #include <cstdlib>
+#include <unordered_map>
 
 #include "engine/input/InputRouting.h"
 #include "engine/input/InputState.h"
 #include "engine/ui/Style.h"
 #include "engine/ui/UiContext.h"
+#include "engine/ui/UiId.h"
 #include "tests/TestHelpers.h"
 
 namespace
@@ -129,6 +131,28 @@ namespace
     const HitTestResult hitTestResult = RouteInputPoint(rootNode, Vec2{700.0f, 400.0f});
 
     return !hitTestResult.hit && !IsValidSurfaceId(hitTestResult.surfaceId);
+}
+
+[[nodiscard]] bool TestUiIdUsesExactStringIdentity()
+{
+    using namespace greenfield;
+
+    const UiId firstButtonId = MakeUiId("button");
+    const UiId matchingButtonId = MakeUiId("button");
+    const UiId differentButtonId = MakeUiId("button-2");
+
+    return firstButtonId == matchingButtonId && !(firstButtonId == differentButtonId);
+}
+
+[[nodiscard]] bool TestUiIdCanKeyStateMaps()
+{
+    using namespace greenfield;
+
+    std::unordered_map<UiId, float, UiIdHash> offsets{};
+    offsets[MakeUiId("panel")] = 42.0f;
+    offsets[MakeUiId("panel-2")] = 7.0f;
+
+    return offsets[MakeUiId("panel")] == 42.0f && offsets[MakeUiId("panel-2")] == 7.0f && offsets.size() == 2U;
 }
 
 [[nodiscard]] bool TestRootSurfaceAccessDoesNotChangeCommandEmission()
@@ -310,7 +334,8 @@ int main()
 {
     if (!TestColumnAndRowLayoutCommands() || !TestUiSurfaceCarriesIdentityAndBounds() ||
         !TestRootSurfaceMatchesImmediateFrameBounds() || !TestInputPointRoutesToRootUiSurface() ||
-        !TestInputPointOutsideRootUiSurfaceDoesNotRoute() || !TestRootSurfaceAccessDoesNotChangeCommandEmission() ||
+        !TestInputPointOutsideRootUiSurfaceDoesNotRoute() || !TestUiIdUsesExactStringIdentity() ||
+        !TestUiIdCanKeyStateMaps() || !TestRootSurfaceAccessDoesNotChangeCommandEmission() ||
         !TestTextEmitsRendererAgnosticCommand() ||
         !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestButtonHitAndClickBehavior() ||
         !TestLayoutGeneratedButtonHitRegion())

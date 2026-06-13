@@ -8,6 +8,7 @@
 #include "engine/render/RenderCommandList.h"
 #include "engine/ui/Layout.h"
 #include "engine/ui/Style.h"
+#include "engine/ui/UiId.h"
 #include "engine/ui/UiSurface.h"
 
 namespace greenfield
@@ -89,7 +90,7 @@ private:
 
     struct ScrollPanelFrame
     {
-        std::string name{};
+        UiId id{};
         Rect bounds{};
     };
 
@@ -99,19 +100,20 @@ private:
     [[nodiscard]] Rect GetContentBounds(const LayoutContainer& container) const noexcept;
     [[nodiscard]] Vec2 ResolveItemSize(const LayoutFrame& frame, const Vec2& requestedItemSize) const noexcept;
     void AdvanceLayoutCursor(LayoutFrame& frame, const Vec2& itemSize) noexcept;
-    [[nodiscard]] bool IsButtonActive(const std::string& name) const;
-    [[nodiscard]] Color GetButtonColor(const std::string& name, const Rect& bounds,
+    [[nodiscard]] bool IsButtonActive(const UiId& buttonId) const;
+    [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
-    [[nodiscard]] float GetClampedScrollOffset(const std::string& name, const Rect& bounds, float contentHeight);
+    [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
+    [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
 
     Style _style{};
     Layout _layout{};
     InputState _inputState{};
-    std::string _activeButtonName{};
+    UiId _activeButtonId{};
     std::vector<LayoutFrame> _layoutStack{};
     std::vector<ScrollPanelFrame> _scrollPanelStack{};
-    std::unordered_map<std::string, float> _verticalScrollOffsets{};
+    std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
     RenderCommandList _renderCommands{};
 };
 
