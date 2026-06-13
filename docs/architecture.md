@@ -30,9 +30,9 @@ These types are dependency-light and should stay independent from platform, rend
 
 ### `engine/input`
 
-Input contains platform-neutral interaction state. `InputState` currently exposes mouse position, left mouse button transitions, and vertical scroll delta.
+Input contains platform-neutral interaction state and minimal routing helpers. `InputState` currently exposes mouse position, left mouse button transitions, and vertical scroll delta. The interaction routing vocabulary can hit-test an input point against surface bounds and return the target `SurfaceId` when one is found.
 
-Input state should describe what happened, not where it came from. It must not depend on SDL, WebGPU, Dawn, FreeType, or any concrete windowing backend.
+Input state and routing should describe what happened and which renderer-neutral surface bounds were targeted, not where the input came from. They must not depend on SDL, WebGPU, Dawn, FreeType, or any concrete windowing backend.
 
 ### `engine/platform`
 
@@ -165,9 +165,9 @@ Future platform targets should add providers or backends rather than leaking pla
 
 ## Surface Direction
 
-Minimal SDK-level surface identity and bounds value types exist now for future interaction tree work. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
+Minimal SDK-level surface identity and bounds value types exist now for future interaction tree work. M2 also has a small hit-test/routing vocabulary for routing a point to a surface identity. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
 
-Those systems are not part of M0. When they arrive, the architectural intent is that they participate in one cohesive application experience without violating renderer or platform boundaries.
+Those systems are not part of M2. The current routing foundation is not a compositor, retained UI tree, event system, or full interaction tree. When richer systems arrive, the architectural intent is that they participate in one cohesive application experience without violating renderer or platform boundaries.
 
 ## Renderer Flow
 

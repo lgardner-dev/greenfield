@@ -1,5 +1,6 @@
 #include <cstdlib>
 
+#include "engine/input/InputRouting.h"
 #include "engine/input/InputState.h"
 #include "engine/ui/Style.h"
 #include "engine/ui/UiContext.h"
@@ -100,6 +101,34 @@ namespace
            RectanglesMatch(rootSurface.GetBounds(), layout.bounds) && commands.Size() == 1U &&
            RectanglesMatch(commands.Commands()[0].rectangle,
                            Rect{.position = Vec2{22.0f, 32.0f}, .size = Vec2{80.0f, 30.0f}});
+}
+
+[[nodiscard]] bool TestInputPointRoutesToRootUiSurface()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+
+    const UiSurface rootSurface = uiContext.GetRootSurface();
+    const InteractionNode rootNode = MakeInteractionNode(rootSurface.GetSurface());
+    const HitTestResult hitTestResult = RouteInputPoint(rootNode, Vec2{24.0f, 28.0f});
+
+    return hitTestResult.hit && hitTestResult.surfaceId.value == RootUiSurfaceId.value;
+}
+
+[[nodiscard]] bool TestInputPointOutsideRootUiSurfaceDoesNotRoute()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+
+    const UiSurface rootSurface = uiContext.GetRootSurface();
+    const InteractionNode rootNode = MakeInteractionNode(rootSurface.GetSurface());
+    const HitTestResult hitTestResult = RouteInputPoint(rootNode, Vec2{700.0f, 400.0f});
+
+    return !hitTestResult.hit && !IsValidSurfaceId(hitTestResult.surfaceId);
 }
 
 [[nodiscard]] bool TestRootSurfaceAccessDoesNotChangeCommandEmission()
@@ -280,7 +309,8 @@ namespace
 int main()
 {
     if (!TestColumnAndRowLayoutCommands() || !TestUiSurfaceCarriesIdentityAndBounds() ||
-        !TestRootSurfaceMatchesImmediateFrameBounds() || !TestRootSurfaceAccessDoesNotChangeCommandEmission() ||
+        !TestRootSurfaceMatchesImmediateFrameBounds() || !TestInputPointRoutesToRootUiSurface() ||
+        !TestInputPointOutsideRootUiSurfaceDoesNotRoute() || !TestRootSurfaceAccessDoesNotChangeCommandEmission() ||
         !TestTextEmitsRendererAgnosticCommand() ||
         !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestButtonHitAndClickBehavior() ||
         !TestLayoutGeneratedButtonHitRegion())
