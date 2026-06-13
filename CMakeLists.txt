@@ -74,6 +74,13 @@ target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_rend
 greenfield_enable_warnings(greenfield_sandbox)
 
 if(BUILD_TESTING)
+    add_test(
+        NAME greenfield_dependency_boundary_tests
+        COMMAND "${CMAKE_COMMAND}"
+                -DGREENFIELD_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/CheckDependencyBoundaries.cmake"
+    )
+
     function(greenfield_add_test test_name source_file)
         add_executable(${test_name}
             ${source_file}
