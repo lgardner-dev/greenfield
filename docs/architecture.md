@@ -101,6 +101,8 @@ The UI layer depends on:
 
 The UI layer must not include SDL, Dawn, WebGPU, or FreeType. Widgets should emit renderer-neutral commands and let the active renderer decide how to draw them.
 
+The current immediate UI root is also describable as a `UiSurface`: a lightweight UI value that carries the root surface identity and the same frame bounds passed to `UiContext::BeginFrame`. This lets the UI root participate in the SDK surface vocabulary without adding a compositor, retained UI tree, or future Canvas2D/Scene3D surface system.
+
 ### `apps/sandbox`
 
 The sandbox is the current demo application. It wires the layers together:

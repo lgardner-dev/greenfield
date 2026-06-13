@@ -277,6 +277,11 @@ const Layout& UiContext::GetLayout() const noexcept
     return _layout;
 }
 
+UiSurface UiContext::GetRootSurface() const noexcept
+{
+    return MakeRootUiSurface(_layout);
+}
+
 float UiContext::GetVerticalScrollOffset(const std::string& name) const
 {
     const auto scrollOffset = _verticalScrollOffsets.find(name);

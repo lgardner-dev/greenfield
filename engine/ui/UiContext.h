@@ -8,6 +8,7 @@
 #include "engine/render/RenderCommandList.h"
 #include "engine/ui/Layout.h"
 #include "engine/ui/Style.h"
+#include "engine/ui/UiSurface.h"
 
 namespace greenfield
 {
@@ -73,6 +74,7 @@ public:
     void SetStyle(const Style& style);
     [[nodiscard]] const Style& GetStyle() const noexcept;
     [[nodiscard]] const Layout& GetLayout() const noexcept;
+    [[nodiscard]] UiSurface GetRootSurface() const noexcept;
     [[nodiscard]] float GetVerticalScrollOffset(const std::string& name) const;
 
 private:

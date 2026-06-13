@@ -64,6 +64,72 @@ namespace
            RectanglesMatch(rowCommands.Commands()[1].rectangle, Rect{.position = Vec2{42.0f, 5.0f}, .size = Vec2{30.0f, 40.0f}});
 }
 
+[[nodiscard]] bool TestUiSurfaceCarriesIdentityAndBounds()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect bounds{
+        .position = Vec2{8.0f, 12.0f},
+        .size = Vec2{320.0f, 180.0f},
+    };
+    const UiSurface uiSurface{SurfaceId{.value = 77U}, bounds};
+
+    return uiSurface.GetId().value == 77U && IsValidSurface(uiSurface.GetSurface()) &&
+           RectanglesMatch(uiSurface.GetBounds(), bounds);
+}
+
+[[nodiscard]] bool TestRootSurfaceMatchesImmediateFrameBounds()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Layout layout{
+        .bounds = Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{320.0f, 180.0f}},
+        .padding = 12.0f,
+        .itemSize = Vec2{80.0f, 30.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(layout);
+    const UiSurface rootSurface = uiContext.GetRootSurface();
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return rootSurface.GetId().value == RootUiSurfaceId.value &&
+           RectanglesMatch(rootSurface.GetBounds(), layout.bounds) && commands.Size() == 1U &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{22.0f, 32.0f}, .size = Vec2{80.0f, 30.0f}});
+}
+
+[[nodiscard]] bool TestRootSurfaceAccessDoesNotChangeCommandEmission()
+{
+    using namespace greenfield;
+    using greenfield::tests::ColorsMatch;
+    using greenfield::tests::RectanglesMatch;
+
+    const Layout layout = MakeLayout();
+    const Color panelColor{0.2f, 0.3f, 0.4f, 1.0f};
+
+    UiContext unchangedContext;
+    unchangedContext.BeginFrame(layout);
+    unchangedContext.Panel(panelColor, 4.0f);
+    const auto& unchangedCommands = unchangedContext.EndFrame();
+
+    UiContext surfaceAwareContext;
+    surfaceAwareContext.BeginFrame(layout);
+    const UiSurface rootSurface = surfaceAwareContext.GetRootSurface();
+    surfaceAwareContext.Panel(panelColor, 4.0f);
+    const auto& surfaceAwareCommands = surfaceAwareContext.EndFrame();
+
+    return rootSurface.GetId().value == RootUiSurfaceId.value && unchangedCommands.Size() == 1U &&
+           surfaceAwareCommands.Size() == 1U &&
+           unchangedCommands.Commands()[0].type == surfaceAwareCommands.Commands()[0].type &&
+           RectanglesMatch(unchangedCommands.Commands()[0].rectangle, surfaceAwareCommands.Commands()[0].rectangle) &&
+           ColorsMatch(unchangedCommands.Commands()[0].fillColor, surfaceAwareCommands.Commands()[0].fillColor) &&
+           unchangedCommands.Commands()[0].cornerRadius == surfaceAwareCommands.Commands()[0].cornerRadius;
+}
+
 [[nodiscard]] bool TestTextEmitsRendererAgnosticCommand()
 {
     using namespace greenfield;
@@ -213,7 +279,9 @@ namespace
 
 int main()
 {
-    if (!TestColumnAndRowLayoutCommands() || !TestTextEmitsRendererAgnosticCommand() ||
+    if (!TestColumnAndRowLayoutCommands() || !TestUiSurfaceCarriesIdentityAndBounds() ||
+        !TestRootSurfaceMatchesImmediateFrameBounds() || !TestRootSurfaceAccessDoesNotChangeCommandEmission() ||
+        !TestTextEmitsRendererAgnosticCommand() ||
         !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestButtonHitAndClickBehavior() ||
         !TestLayoutGeneratedButtonHitRegion())
     {
