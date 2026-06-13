@@ -22,6 +22,9 @@ Core contains small value types shared across the engine:
 - `Vec2`
 - `Rect`
 - `Color`
+- `SurfaceId`
+- `SurfaceBounds`
+- `Surface`
 
 These types are dependency-light and should stay independent from platform, renderer, font, and application code.
 
@@ -160,7 +163,7 @@ Future platform targets should add providers or backends rather than leaking pla
 
 ## Surface Direction
 
-UI surfaces exist now. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
+Minimal SDK-level surface identity and bounds value types exist now for future interaction tree work. Canvas2D, Scene3D, shader/editor surfaces, editor panels, dashboards, and other custom interactive surfaces are future directions only.
 
 Those systems are not part of M0. When they arrive, the architectural intent is that they participate in one cohesive application experience without violating renderer or platform boundaries.
 

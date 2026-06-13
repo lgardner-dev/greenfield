@@ -1,6 +1,7 @@
 #include <cstdlib>
 
 #include "engine/core/Rect.h"
+#include "engine/core/Surface.h"
 #include "engine/core/Vec2.h"
 #include "engine/input/InputState.h"
 #include "tests/TestHelpers.h"
@@ -43,11 +44,40 @@ namespace
     return inputState.verticalScrollDelta == 0.0f;
 }
 
+[[nodiscard]] bool TestSurfaceIdDefaultsToInvalid()
+{
+    const greenfield::SurfaceId surfaceId{};
+    return !greenfield::IsValidSurfaceId(surfaceId);
+}
+
+[[nodiscard]] bool TestSurfaceCarriesStableIdentityAndBounds()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Surface surface{
+        .id = SurfaceId{.value = 42U},
+        .bounds =
+            SurfaceBounds{
+                .rectangle =
+                    Rect{
+                        .position = Vec2{12.0f, 18.0f},
+                        .size = Vec2{320.0f, 180.0f},
+                    },
+            },
+    };
+
+    return IsValidSurface(surface) && surface.id.value == 42U &&
+           RectanglesMatch(surface.bounds.rectangle,
+                           Rect{.position = Vec2{12.0f, 18.0f}, .size = Vec2{320.0f, 180.0f}});
+}
+
 } // namespace
 
 int main()
 {
-    if (!TestRectanglePointContainment() || !TestRectangleIntersection() || !TestInputDefaults())
+    if (!TestRectanglePointContainment() || !TestRectangleIntersection() || !TestInputDefaults() ||
+        !TestSurfaceIdDefaultsToInvalid() || !TestSurfaceCarriesStableIdentityAndBounds())
     {
         return EXIT_FAILURE;
     }
