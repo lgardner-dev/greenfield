@@ -11,8 +11,11 @@
 #include "engine/core/Color.h"
 #include "engine/core/Rect.h"
 #include "engine/core/Vec2.h"
+#include "engine/input/InputState.h"
 #include "engine/platform/SdlStartupPresenter.h"
 #include "engine/platform/SdlWindow.h"
+#include "engine/render/RendererBackendKind.h"
+#include "engine/render/fast2d/Fast2DRenderer.h"
 #include "engine/render/webgpu/WebGpuContext.h"
 #include "engine/render/webgpu/WebGpuRenderer.h"
 #include "engine/ui/Layout.h"
@@ -59,6 +62,13 @@ struct SandboxWindowSize
 {
     int width{1280};
     int height{720};
+};
+
+struct SandboxOptions
+{
+    SandboxWindowSize windowSize{};
+    RendererBackendKind rendererBackendKind{RendererBackendKind::WebGpu};
+    std::string invalidRendererName{};
 };
 
 constexpr Color BackgroundColor{0.055f, 0.065f, 0.078f, 1.0f};
@@ -176,28 +186,45 @@ std::optional<SandboxWindowSize> ParseWindowSize(std::string_view text)
     }
 }
 
-SandboxWindowSize GetInitialWindowSize(int argumentCount, char* argumentValues[])
+SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
 {
     constexpr std::string_view WindowSizePrefix{"--window-size="};
-    SandboxWindowSize windowSize{};
+    constexpr std::string_view RendererPrefix{"--renderer="};
+    SandboxOptions sandboxOptions{};
 
     for (int argumentIndex = 1; argumentIndex < argumentCount; ++argumentIndex)
     {
         const std::string_view argument{argumentValues[argumentIndex]};
-        if (!argument.starts_with(WindowSizePrefix))
+        if (argument.starts_with(WindowSizePrefix))
         {
+            const std::optional<SandboxWindowSize> parsedWindowSize =
+                ParseWindowSize(argument.substr(WindowSizePrefix.size()));
+            if (parsedWindowSize.has_value())
+            {
+                sandboxOptions.windowSize = parsedWindowSize.value();
+            }
             continue;
         }
 
-        const std::optional<SandboxWindowSize> parsedWindowSize =
-            ParseWindowSize(argument.substr(WindowSizePrefix.size()));
-        if (parsedWindowSize.has_value())
+        if (argument.starts_with(RendererPrefix))
         {
-            windowSize = parsedWindowSize.value();
+            const std::string_view rendererName = argument.substr(RendererPrefix.size());
+            const std::optional<RendererBackendKind> parsedRendererBackendKind =
+                ParseRendererBackendKind(rendererName);
+            if (parsedRendererBackendKind.has_value())
+            {
+                sandboxOptions.rendererBackendKind = parsedRendererBackendKind.value();
+                sandboxOptions.invalidRendererName.clear();
+            }
+            else
+            {
+                sandboxOptions.invalidRendererName = rendererName;
+            }
+            continue;
         }
     }
 
-    return windowSize;
+    return sandboxOptions;
 }
 
 void DrawHeader(UiContext& uiContext, const Rect& bounds)
@@ -437,6 +464,121 @@ void BuildControlRoomUi(UiContext& uiContext, const Rect& rootBounds, DashboardS
     DrawControlActionsPanel(uiContext, alertsAndActions.second, dashboardState);
 }
 
+void ConfigureControlRoomStyle(UiContext& uiContext)
+{
+    uiContext.SetStyle(Style{
+        .windowBackground = BackgroundColor,
+        .panelBackground = SurfaceColor,
+        .panelBorder = BorderColor,
+        .accent = BlueAccentColor,
+        .textPrimary = TextPrimaryColor,
+        .textSecondary = TextSecondaryColor,
+        .panelCornerRadius = 18.0f,
+        .panelBorderThickness = 1.0f,
+    });
+}
+
+[[nodiscard]] Layout MakeSandboxLayout(float width, float height)
+{
+    return Layout{
+        .bounds =
+            Rect{
+                .position = Vec2{0.0f, 0.0f},
+                .size = Vec2{width, height},
+            },
+        .padding = 16.0f,
+    };
+}
+
+void BuildControlRoomFrame(UiContext& uiContext, const Layout& layout, DashboardState& dashboardState,
+                           const InputState& inputState = {})
+{
+    uiContext.BeginFrame(layout, inputState);
+    BuildControlRoomUi(uiContext, layout.bounds, dashboardState);
+}
+
+int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
+{
+    std::cout << "Running Fast2D diagnostic renderer path. No window presentation is available in this slice.\n";
+
+    Fast2DRenderer renderer{static_cast<std::size_t>(initialWindowSize.width),
+                            static_cast<std::size_t>(initialWindowSize.height)};
+    UiContext uiContext;
+    ConfigureControlRoomStyle(uiContext);
+    DashboardState dashboardState{};
+
+    renderer.BeginFrame();
+
+    const Layout layout =
+        MakeSandboxLayout(static_cast<float>(initialWindowSize.width), static_cast<float>(initialWindowSize.height));
+    BuildControlRoomFrame(uiContext, layout, dashboardState);
+
+    const auto& renderCommands = uiContext.EndFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    std::cout << "Fast2D diagnostic frame complete: " << renderer.CompletedFrameCommandCount()
+              << " commands, " << renderer.PreparedFillOperationCount() << " fill operations, "
+              << renderer.DeferredTextCommandCount() << " deferred text commands, raster target "
+              << renderer.RasterTargetWidth() << "x" << renderer.RasterTargetHeight() << ".\n";
+
+    return 0;
+}
+
+int RunWebGpuSandbox(const SandboxWindowSize& initialWindowSize)
+{
+    SdlWindow window{"Greenfield Sandbox", initialWindowSize.width, initialWindowSize.height};
+    {
+        SdlStartupPresenter startupPresenter{window};
+        startupPresenter.DrawFrame();
+
+        window.PollEvents();
+        if (window.ShouldClose())
+        {
+            return 0;
+        }
+    }
+
+    WebGpuContext webGpuContext{window};
+    const std::string defaultFontPath = FindDefaultFontPath();
+    if (defaultFontPath.empty())
+    {
+        std::cerr << "No default font found. Text commands will be recorded, but text will not render.\n";
+    }
+    else
+    {
+        std::cout << "Using sandbox font: " << defaultFontPath << '\n';
+    }
+
+    WebGpuRenderer renderer{webGpuContext, defaultFontPath};
+    UiContext uiContext;
+    ConfigureControlRoomStyle(uiContext);
+    DashboardState dashboardState{};
+
+    while (!window.ShouldClose())
+    {
+        window.PollEvents();
+        if (window.ShouldClose())
+        {
+            break;
+        }
+
+        renderer.BeginFrame();
+
+        const Layout layout =
+            MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
+        BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
+
+        const auto& renderCommands = uiContext.EndFrame();
+        renderer.Submit(renderCommands);
+        renderer.EndFrame();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+
+    return 0;
+}
+
 } // namespace
 
 int main(int argumentCount, char* argumentValues[])
@@ -445,75 +587,20 @@ int main(int argumentCount, char* argumentValues[])
     {
         std::cout << "Starting Greenfield sandbox\n";
 
-        const SandboxWindowSize initialWindowSize = GetInitialWindowSize(argumentCount, argumentValues);
-        SdlWindow window{"Greenfield Sandbox", initialWindowSize.width, initialWindowSize.height};
+        const SandboxOptions sandboxOptions = GetSandboxOptions(argumentCount, argumentValues);
+        if (!sandboxOptions.invalidRendererName.empty())
         {
-            SdlStartupPresenter startupPresenter{window};
-            startupPresenter.DrawFrame();
-
-            window.PollEvents();
-            if (window.ShouldClose())
-            {
-                return 0;
-            }
+            std::cerr << "Unknown renderer backend '" << sandboxOptions.invalidRendererName
+                      << "'. Expected --renderer=webgpu or --renderer=fast2d.\n";
+            return 1;
         }
 
-        WebGpuContext webGpuContext{window};
-        const std::string defaultFontPath = FindDefaultFontPath();
-        if (defaultFontPath.empty())
+        if (sandboxOptions.rendererBackendKind == RendererBackendKind::Fast2D)
         {
-            std::cerr << "No default font found. Text commands will be recorded, but text will not render.\n";
-        }
-        else
-        {
-            std::cout << "Using sandbox font: " << defaultFontPath << '\n';
+            return RunFast2DDiagnosticSandbox(sandboxOptions.windowSize);
         }
 
-        WebGpuRenderer renderer{webGpuContext, defaultFontPath};
-        UiContext uiContext;
-
-        uiContext.SetStyle(Style{
-            .windowBackground = BackgroundColor,
-            .panelBackground = SurfaceColor,
-            .panelBorder = BorderColor,
-            .accent = BlueAccentColor,
-            .textPrimary = TextPrimaryColor,
-            .textSecondary = TextSecondaryColor,
-            .panelCornerRadius = 18.0f,
-            .panelBorderThickness = 1.0f,
-        });
-        DashboardState dashboardState{};
-
-        while (!window.ShouldClose())
-        {
-            window.PollEvents();
-            if (window.ShouldClose())
-            {
-                break;
-            }
-
-            renderer.BeginFrame();
-
-            const Layout layout{
-                .bounds =
-                    Rect{
-                        .position = Vec2{0.0f, 0.0f},
-                        .size = Vec2{static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight())},
-                    },
-                .padding = 16.0f,
-            };
-
-            uiContext.BeginFrame(layout, window.GetInputState());
-            BuildControlRoomUi(uiContext, layout.bounds, dashboardState);
-
-            const auto& renderCommands = uiContext.EndFrame();
-            renderer.Submit(renderCommands);
-            renderer.EndFrame();
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-        }
-
-        return 0;
+        return RunWebGpuSandbox(sandboxOptions.windowSize);
     }
     catch (const std::exception& exception)
     {

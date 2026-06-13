@@ -79,7 +79,8 @@ add_executable(greenfield_sandbox
     apps/sandbox/main.cpp
 )
 target_include_directories(greenfield_sandbox PRIVATE "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform greenfield_render_webgpu)
+target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform
+                                                  greenfield_render_fast2d greenfield_render_webgpu)
 greenfield_enable_warnings(greenfield_sandbox)
 
 if(BUILD_TESTING)
