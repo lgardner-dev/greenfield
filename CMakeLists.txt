@@ -87,8 +87,16 @@ if(BUILD_TESTING)
     add_test(
         NAME greenfield_dependency_boundary_tests
         COMMAND "${CMAKE_COMMAND}"
-                -DGREENFIELD_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+                "-DGREENFIELD_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/CheckDependencyBoundaries.cmake"
+    )
+
+    add_test(
+        NAME greenfield_cpp_cmake_app_template_tests
+        COMMAND "${CMAKE_COMMAND}"
+                "-DGREENFIELD_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DGREENFIELD_BINARY_DIR=${PROJECT_BINARY_DIR}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/CheckCppCmakeAppTemplate.cmake"
     )
 
     function(greenfield_add_test test_name source_file)

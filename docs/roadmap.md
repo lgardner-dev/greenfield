@@ -48,6 +48,8 @@ Future generated or exported apps should provide their own composition-root poli
 
 `templates/cpp-cmake-app` is a narrow scaffold for the intended exported-app shape. It is not included in the root build and does not make `apps/sandbox` a product template.
 
+A small CTest guardrail validates the scaffold structure and expected standalone CMake stop. It protects the M5 contract without adding a generator, package, install flow, or export pipeline.
+
 M5 does not yet add generated projects, CLI behavior, install rules, package/export logic, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
 
 ## v0.1 Direction

@@ -68,6 +68,8 @@ The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `
 
 The repository also contains `templates/cpp-cmake-app`, a small non-invasive scaffold that documents the intended future shape of a C++/CMake exported app. It is not automatically included by the root build.
 
+CTest includes a narrow template guardrail that checks the scaffold files, expected M5 limit language, and the intended standalone CMake stop when SDK/runtime targets are unavailable. This validates the scaffold contract without making it part of the normal app build.
+
 ## Export Vocabulary
 
 - Host platform: the environment and platform provider an app runs on, such as the current SDL desktop path or a future browser host.

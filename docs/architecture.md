@@ -176,6 +176,8 @@ The sandbox app target links `greenfield_core`, `greenfield_render`, `greenfield
 
 Tests currently cover core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, and dependency boundaries. The dependency boundary test guards reusable SDK-facing files from direct SDL, Dawn/WebGPU, and FreeType includes.
 
+Tests also include a narrow `templates/cpp-cmake-app` guardrail. It checks scaffold structure, truthful M5 limit language, absence of concrete platform/render/font includes in the template app source, and the intended standalone CMake failure when SDK/runtime targets are not available. It does not build the template as an app target or implement export behavior.
+
 ## Dependency Direction
 
 Dependencies should point from higher-level composition and features toward narrow abstractions and value types.
