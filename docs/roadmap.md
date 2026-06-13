@@ -52,6 +52,16 @@ A small CTest guardrail validates the scaffold structure and expected standalone
 
 M5 does not yet add generated projects, CLI behavior, install rules, package/export logic, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
 
+## M6A
+
+M6A is the product-quality UI runtime foundation before richer controls.
+
+Current M6A work includes renderer-neutral and platform-neutral `UiId` control identity, internal normalization of existing immediate UI string names into `UiId` for runtime state, clearer `UiContext` persistent/per-frame state boundaries, minimal persistent focus state, generalized active-control capture state, and per-frame mouse press/release consumption so overlapping immediate buttons cannot claim the same gesture.
+
+The immediate UI programming model remains intact. Existing button behavior, scroll panels, layout, clipping, text command emission, renderer selection, Fast2D diagnostic behavior, and WebGPU sandbox behavior are preserved.
+
+M6A does not add keyboard navigation, text input, IME, clipboard, selection, accessibility, retained UI trees, a full event dispatch system, modal focus traps, new control families, compositor work, mixed-surface composition, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, Skia, Python bindings, or hot reload.
+
 ## v0.1 Direction
 
 - C++20-first authoring.
@@ -97,3 +107,6 @@ M5 does not yet add generated projects, CLI behavior, install rules, package/exp
 - App template generation beyond the current illustrative scaffold
 - Install, package, or export rule implementation
 - Windows-specific export workflow implementation
+- Keyboard navigation, text input, IME, clipboard, selection, and accessibility
+- Retained UI tree or full UI event dispatch system
+- Broad product-quality UI control set

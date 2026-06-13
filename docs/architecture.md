@@ -128,7 +128,7 @@ Fast2D must stay free of SDL, Dawn/WebGPU, and FreeType includes. Dependency bou
 
 ### `engine/ui`
 
-UI contains the immediate-mode UI context, layout helpers, styles, buttons, panels, text helpers, and scroll panels.
+UI contains the immediate-mode UI context, renderer-neutral UI identity, layout helpers, styles, buttons, panels, text helpers, and scroll panels.
 
 The UI layer depends on:
 
@@ -139,6 +139,16 @@ The UI layer depends on:
 The UI layer must not include SDL, Dawn, WebGPU, or FreeType. Widgets should emit renderer-neutral commands and let the active renderer decide how to draw them.
 
 The current immediate UI root is also describable as a `UiSurface`: a lightweight UI value that carries the root surface identity and the same frame bounds passed to `UiContext::BeginFrame`. This lets the UI root participate in the SDK surface vocabulary without adding a compositor, retained UI tree, or future Canvas2D/Scene3D surface system.
+
+M6A adds product-quality runtime groundwork inside this immediate UI model:
+
+- `UiId` is the renderer-neutral and platform-neutral control identity type. Existing immediate UI string names are normalized internally into `UiId` where runtime state needs stable identity.
+- `UiContext` separates persistent runtime state from per-frame state. Style, active control identity, focus identity, and vertical scroll offsets persist across frames. Render commands, layout stack, scroll panel stack, input snapshot, and mouse press/release consumption flags are rebuilt for each frame.
+- Focus is intentionally minimal and persistent. `UiContext` can request, clear, query, and report the focused control identity, but this does not add keyboard navigation, text entry, focus traversal, accessibility semantics, or modal focus traps.
+- Active-control state is generalized as capture state instead of button-specific state. Buttons use it to keep a press/release gesture tied to the initiating control across frames.
+- Per-frame mouse press/release consumption prevents later overlapping buttons from claiming the same gesture while preserving existing immediate button calls.
+
+This foundation is UI runtime groundwork, not a retained-mode system or a broad controls milestone. It does not add a retained UI tree, full event dispatch system, keyboard input model, text input, IME, clipboard, selection, accessibility, or new control families.
 
 ### `apps/sandbox`
 
@@ -265,8 +275,8 @@ The current input path is:
 1. SDL collects native events in `SdlWindow::PollEvents`.
 2. `SdlWindow` translates those events into platform-neutral `InputState`.
 3. The application reads `InputState` through `IWindow`.
-4. `UiContext` consumes `InputState` while building widgets.
-5. UI interaction changes widget state and emits render commands for the current frame.
+4. `UiContext` snapshots `InputState` for the current immediate UI frame.
+5. UI interaction updates persistent runtime state where needed, consumes per-frame mouse press/release gestures, and emits render commands for the current frame.
 
 This keeps native event details out of UI code and leaves room for other platform providers to produce the same `InputState`.
 
