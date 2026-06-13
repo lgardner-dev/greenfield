@@ -6,6 +6,7 @@ set(_guarded_files)
 set(_guarded_roots
     engine/core
     engine/input
+    engine/render/fast2d
     engine/ui
 )
 

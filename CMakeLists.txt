@@ -38,6 +38,13 @@ add_library(greenfield_render INTERFACE)
 target_include_directories(greenfield_render INTERFACE "${PROJECT_SOURCE_DIR}")
 target_link_libraries(greenfield_render INTERFACE greenfield_core)
 
+add_library(greenfield_render_fast2d
+    engine/render/fast2d/Fast2DRenderer.cpp
+)
+target_include_directories(greenfield_render_fast2d PUBLIC "${PROJECT_SOURCE_DIR}")
+target_link_libraries(greenfield_render_fast2d PUBLIC greenfield_core greenfield_render)
+greenfield_enable_warnings(greenfield_render_fast2d)
+
 add_library(greenfield_ui
     engine/ui/UiContext.cpp
 )
@@ -97,4 +104,13 @@ if(BUILD_TESTING)
     greenfield_add_test(greenfield_render_command_tests tests/render_command_tests.cpp)
     greenfield_add_test(greenfield_layout_tests tests/layout_tests.cpp)
     greenfield_add_test(greenfield_ui_tests tests/ui_tests.cpp)
+
+    add_executable(greenfield_fast2d_renderer_tests
+        tests/fast2d_renderer_tests.cpp
+    )
+    target_include_directories(greenfield_fast2d_renderer_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+    target_link_libraries(greenfield_fast2d_renderer_tests PRIVATE greenfield_core greenfield_render
+                                                                    greenfield_render_fast2d)
+    greenfield_enable_warnings(greenfield_fast2d_renderer_tests)
+    add_test(NAME greenfield_fast2d_renderer_tests COMMAND greenfield_fast2d_renderer_tests)
 endif()
