@@ -32,8 +32,8 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Dawn/WebGPU is the current implemented accelerated backend and should remain backend-specific in the architecture direction.
 - The current default build still requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer.
 - Skia may be considered later as an optional renderer/backend, but it is not the initial foundation.
-- Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M4 renderer-selection work.
-- Greenfield CLI is future tooling, not part of current M4 renderer-selection work.
+- Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M4/M5 foundation work.
+- Greenfield CLI is future tooling, not part of current M4/M5 foundation work.
 - Development can be Linux-first for v0.1 work, while preserving Linux, Windows, and browser-hosted WebAssembly as v0.1 release/export architecture considerations.
 - Exported Greenfield apps should be C++/CMake-based first.
 - Exported apps are future app projects, not the sandbox copied as a product template.
