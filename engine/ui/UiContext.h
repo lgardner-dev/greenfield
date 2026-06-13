@@ -107,7 +107,14 @@ private:
     [[nodiscard]] Rect GetContentBounds(const LayoutContainer& container) const noexcept;
     [[nodiscard]] Vec2 ResolveItemSize(const LayoutFrame& frame, const Vec2& requestedItemSize) const noexcept;
     void AdvanceLayoutCursor(LayoutFrame& frame, const Vec2& itemSize) noexcept;
-    [[nodiscard]] bool IsButtonActive(const UiId& buttonId) const;
+    [[nodiscard]] bool HasActiveControl() const noexcept;
+    [[nodiscard]] bool IsControlActive(const UiId& controlId) const noexcept;
+    void CaptureControl(const UiId& controlId);
+    void ReleaseActiveControl() noexcept;
+    [[nodiscard]] bool IsMousePressConsumed() const noexcept;
+    [[nodiscard]] bool IsMouseReleaseConsumed() const noexcept;
+    void ConsumeMousePress() noexcept;
+    void ConsumeMouseRelease() noexcept;
     [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
     [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
@@ -116,7 +123,7 @@ private:
 
     // Persistent runtime state survives BeginFrame so controls can respond across frames.
     Style _style{};
-    UiId _activeButtonId{};
+    std::optional<UiId> _activeControlId{};
     std::optional<UiId> _focusedControlId{};
     std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
 
@@ -126,6 +133,8 @@ private:
     std::vector<LayoutFrame> _layoutStack{};
     std::vector<ScrollPanelFrame> _scrollPanelStack{};
     RenderCommandList _renderCommands{};
+    bool _mousePressConsumed{false};
+    bool _mouseReleaseConsumed{false};
 };
 
 } // namespace greenfield

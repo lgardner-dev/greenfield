@@ -433,7 +433,7 @@ namespace
     return buttonContext.Button("layout-button", buttonStyle);
 }
 
-[[nodiscard]] bool TestActiveButtonIdentitySurvivesPressReleaseFrames()
+[[nodiscard]] bool TestActiveControlIdentitySurvivesPressReleaseFrames()
 {
     using namespace greenfield;
 
@@ -482,6 +482,36 @@ namespace
 
     uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{150.0f, 30.0f}, .leftMouseButtonReleased = true});
     return !uiContext.Button("first-button", firstButtonBounds) && uiContext.Button("second-button", secondButtonBounds);
+}
+
+[[nodiscard]] bool TestOverlappingButtonPressIsConsumedByActiveControl()
+{
+    using namespace greenfield;
+
+    const Rect overlappingButtonBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{100.0f, 50.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Button("first-button", overlappingButtonBounds) ||
+        uiContext.Button("second-button", overlappingButtonBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool firstButtonClicked = uiContext.Button("first-button", overlappingButtonBounds);
+    const bool secondButtonClicked = uiContext.Button("second-button", overlappingButtonBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return firstButtonClicked && !secondButtonClicked && releaseCommands.Size() == 4U;
 }
 
 [[nodiscard]] bool TestFocusDefaultsToEmpty()
@@ -542,7 +572,7 @@ namespace
     return secondCommands.IsEmpty() && uiContext.HasFocus("persistent-control");
 }
 
-[[nodiscard]] bool TestFocusIsIndependentFromActiveButtonAndScrollState()
+[[nodiscard]] bool TestFocusIsIndependentFromActiveControlAndScrollState()
 {
     using namespace greenfield;
 
@@ -600,9 +630,10 @@ int main()
         !TestEndFrameReturnsRendererNeutralCommands() || !TestTextEmitsRendererAgnosticCommand() ||
         !TestScrollPanelClampsOffsetAndRecordsClipCommands() || !TestScrollOffsetsPersistByPanelIdentity() ||
         !TestButtonHitAndClickBehavior() || !TestLayoutGeneratedButtonHitRegion() ||
-        !TestActiveButtonIdentitySurvivesPressReleaseFrames() || !TestFocusDefaultsToEmpty() ||
-        !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() || !TestFocusPersistsAcrossFrames() ||
-        !TestFocusIsIndependentFromActiveButtonAndScrollState())
+        !TestActiveControlIdentitySurvivesPressReleaseFrames() ||
+        !TestOverlappingButtonPressIsConsumedByActiveControl() || !TestFocusDefaultsToEmpty() ||
+        !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
+        !TestFocusPersistsAcrossFrames() || !TestFocusIsIndependentFromActiveControlAndScrollState())
     {
         return EXIT_FAILURE;
     }

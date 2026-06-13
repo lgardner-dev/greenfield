@@ -25,6 +25,8 @@ void UiContext::BeginFrame(const Layout& layout, const InputState& inputState)
     _renderCommands.Clear();
     _layoutStack.clear();
     _scrollPanelStack.clear();
+    _mousePressConsumed = false;
+    _mouseReleaseConsumed = false;
     BeginColumn(LayoutContainer{
         .bounds = _layout.bounds,
         .padding = _layout.padding,
@@ -34,7 +36,7 @@ void UiContext::BeginFrame(const Layout& layout, const InputState& inputState)
 
     if (!_inputState.leftMouseButtonDown && !_inputState.leftMouseButtonReleased)
     {
-        _activeButtonId = UiId{};
+        ReleaseActiveControl();
     }
 }
 
@@ -236,12 +238,14 @@ bool UiContext::Button(const std::string& name, const std::string& label, const 
 {
     const UiId buttonId = MakeUiId(name);
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
-    if (isHovered && _inputState.leftMouseButtonPressed)
+    if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
     {
-        _activeButtonId = buttonId;
+        CaptureControl(buttonId);
+        ConsumeMousePress();
     }
 
-    const bool isClicked = isHovered && IsButtonActive(buttonId) && _inputState.leftMouseButtonReleased;
+    const bool isReleased = IsControlActive(buttonId) && _inputState.leftMouseButtonReleased;
+    const bool isClicked = isHovered && isReleased && !IsMouseReleaseConsumed();
     DrawRectangle(bounds,
                   RectangleStyle{
                       .fillColor = GetButtonColor(buttonId, bounds, buttonStyle),
@@ -251,9 +255,10 @@ bool UiContext::Button(const std::string& name, const std::string& label, const 
                   });
     DrawButtonLabel(label, bounds, buttonStyle);
 
-    if (IsButtonActive(buttonId) && _inputState.leftMouseButtonReleased)
+    if (isReleased)
     {
-        _activeButtonId = UiId{};
+        ConsumeMouseRelease();
+        ReleaseActiveControl();
     }
 
     return isClicked;
@@ -427,15 +432,50 @@ void UiContext::AdvanceLayoutCursor(LayoutFrame& frame, const Vec2& itemSize) no
     frame.cursor.x += itemSize.x + frame.gap;
 }
 
-bool UiContext::IsButtonActive(const UiId& buttonId) const
+bool UiContext::HasActiveControl() const noexcept
 {
-    return _activeButtonId == buttonId;
+    return _activeControlId.has_value();
+}
+
+bool UiContext::IsControlActive(const UiId& controlId) const noexcept
+{
+    return _activeControlId.has_value() && _activeControlId.value() == controlId;
+}
+
+void UiContext::CaptureControl(const UiId& controlId)
+{
+    _activeControlId = controlId;
+}
+
+void UiContext::ReleaseActiveControl() noexcept
+{
+    _activeControlId.reset();
+}
+
+bool UiContext::IsMousePressConsumed() const noexcept
+{
+    return _mousePressConsumed;
+}
+
+bool UiContext::IsMouseReleaseConsumed() const noexcept
+{
+    return _mouseReleaseConsumed;
+}
+
+void UiContext::ConsumeMousePress() noexcept
+{
+    _mousePressConsumed = true;
+}
+
+void UiContext::ConsumeMouseRelease() noexcept
+{
+    _mouseReleaseConsumed = true;
 }
 
 Color UiContext::GetButtonColor(const UiId& buttonId, const Rect& bounds, const ButtonStyle& buttonStyle) const
 {
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
-    if (IsButtonActive(buttonId) && _inputState.leftMouseButtonDown)
+    if (IsControlActive(buttonId) && _inputState.leftMouseButtonDown)
     {
         return buttonStyle.pressed;
     }
