@@ -102,6 +102,7 @@ if(BUILD_TESTING)
 
     greenfield_add_test(greenfield_core_tests tests/core_tests.cpp)
     greenfield_add_test(greenfield_render_command_tests tests/render_command_tests.cpp)
+    greenfield_add_test(greenfield_renderer_backend_kind_tests tests/renderer_backend_kind_tests.cpp)
     greenfield_add_test(greenfield_layout_tests tests/layout_tests.cpp)
     greenfield_add_test(greenfield_ui_tests tests/ui_tests.cpp)
 
