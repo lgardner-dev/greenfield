@@ -17,7 +17,7 @@ Greenfield is organized around the Greenfield SDK: the reusable runtime and libr
 
 ## M5 Export And Target Vocabulary
 
-The current repository has vocabulary for export and target planning, but it does not yet implement generated app projects, app templates, install rules, package rules, CLI export behavior, Windows-specific export workflows, or browser-hosted WebAssembly builds.
+The current repository has vocabulary for export and target planning plus one minimal illustrative C++/CMake app-template scaffold. It does not yet implement generated app projects, install rules, package rules, CLI export behavior, Windows-specific export workflows, or browser-hosted WebAssembly builds.
 
 - Host platform: the operating environment and platform provider an app runs on. The current interactive host path is SDL desktop through `greenfield_sdl_platform`.
 - Renderer backend choice: composition-root policy that selects a renderer implementation. The sandbox currently exposes `--renderer=webgpu` and `--renderer=fast2d`.
@@ -25,6 +25,7 @@ The current repository has vocabulary for export and target planning, but it doe
 - App target: the executable or equivalent CMake target produced by an app project.
 - Build/export target: the requested output platform or delivery direction for an app project, such as Linux desktop today and Windows or browser-hosted WebAssembly as future v0.1 considerations.
 - Browser-hosted WebAssembly: a future target direction that should preserve SDK/UI/runtime boundaries. It is not implemented by the current build.
+- App template scaffold: `templates/cpp-cmake-app` documents the intended future exported-app shape without being included in the root build or implementing export tooling.
 
 Reusable SDK, UI, runtime, surface, and export vocabulary must not directly depend on SDL, Dawn/WebGPU, or FreeType. Concrete composition roots may wire platform and renderer backend targets together when they produce an app target.
 
@@ -154,6 +155,8 @@ The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`. The default `we
 Application code may know about concrete implementations because it is the composition root. Shared engine layers should not take dependencies back on the sandbox.
 
 `apps/sandbox` is not an exported app template. Future generated or exported apps should consume SDK/runtime targets, define their own app target, and choose their own composition-root policy for host platform and renderer backend wiring.
+
+`templates/cpp-cmake-app` is a minimal scaffold for that future shape. It is separate from `apps/sandbox`, expects SDK/runtime targets to be supplied by a containing workspace or future package/export mechanism, and leaves concrete SDL/WebGPU/Fast2D wiring to the app composition root.
 
 ## Current CMake Target Shape
 

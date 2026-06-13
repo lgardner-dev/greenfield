@@ -40,13 +40,15 @@ M4 does not implement a compositor or mixed-surface composition. Visible Fast2D 
 
 M5 is the export and target foundation.
 
-Current M5 work is documentation-only vocabulary and boundary alignment. It defines how Greenfield talks about host platforms, renderer backend choice, app projects, app targets, build/export targets, and browser-hosted WebAssembly as a future target direction.
+Current M5 work is vocabulary, boundary alignment, and one minimal illustrative C++/CMake app-template scaffold. It defines how Greenfield talks about host platforms, renderer backend choice, app projects, app targets, build/export targets, and browser-hosted WebAssembly as a future target direction.
 
 For this slice, exported apps are future C++/CMake-based app projects that consume Greenfield SDK/runtime targets. Exported apps are not the sandbox. `apps/sandbox` remains a demo and composition root that wires current SDK/UI/platform/renderer targets together.
 
 Future generated or exported apps should provide their own composition-root policy. That policy may wire concrete SDL, WebGPU, or Fast2D targets, but reusable SDK/UI/runtime/surface/export vocabulary should not directly depend on SDL, Dawn/WebGPU, or FreeType.
 
-M5 does not yet add templates, CLI behavior, install rules, package/export logic, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
+`templates/cpp-cmake-app` is a narrow scaffold for the intended exported-app shape. It is not included in the root build and does not make `apps/sandbox` a product template.
+
+M5 does not yet add generated projects, CLI behavior, install rules, package/export logic, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
 
 ## v0.1 Direction
 
@@ -55,6 +57,7 @@ M5 does not yet add templates, CLI behavior, install rules, package/export logic
 - v0.1 release/export awareness includes Linux, Windows, and browser-hosted WebAssembly.
 - Exported apps should be C++/CMake-based first.
 - Exported apps should consume SDK/runtime targets and define their own app targets rather than treating `apps/sandbox` as a product template.
+- The current C++/CMake app-template scaffold is illustrative only; future tooling may generate, copy, or replace it.
 - Fast incremental build UX matters more than hot reload.
 - Browser-hosted WASM is a future target direction for exported apps, but it should not be implemented in current M4/M5 foundation work unless explicitly requested.
 
@@ -89,6 +92,6 @@ M5 does not yet add templates, CLI behavior, install rules, package/export logic
 - Python bindings
 - Skia integration
 - WASM implementation work
-- App template generation
+- App template generation beyond the current illustrative scaffold
 - Install, package, or export rule implementation
 - Windows-specific export workflow implementation

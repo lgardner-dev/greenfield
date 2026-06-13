@@ -17,7 +17,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
 - vcpkg manifest-mode as the default dependency path
-- Early M5 export/target vocabulary documentation, without app templates, install rules, packages, CLI behavior, or WASM implementation
+- Early M5 export/target vocabulary documentation and a minimal illustrative C++/CMake app-template scaffold, without install rules, packages, CLI behavior, or WASM implementation
 
 ## Direction
 
@@ -38,6 +38,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Exported Greenfield apps should be C++/CMake-based first.
 - Exported apps are future app projects, not the sandbox copied as a product template.
 - `apps/sandbox` is the current demo and composition root. Future exported apps should consume SDK/runtime targets and provide their own composition-root policy.
+- `templates/cpp-cmake-app` is a minimal illustrative scaffold for that future exported-app shape. It is not included in the root build and is not a working export pipeline.
 - A composition root may wire concrete host platform and renderer backend targets such as SDL, WebGPU, or Fast2D. Reusable SDK/UI/runtime/surface/export vocabulary should stay independent from SDL, Dawn/WebGPU, and FreeType.
 - Hot reload is not a core v0.1 requirement; fast incremental build UX matters more.
 
@@ -45,7 +46,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 The current M4 renderer-selection work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, visible Fast2D platform presentation, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
 
-M5 export/target foundation work is currently documentation-only. It does not add app templates, generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
+M5 export/target foundation work currently includes vocabulary and one minimal illustrative C++/CMake app-template scaffold. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
 
 ## Current Build Shape
 
@@ -63,7 +64,9 @@ The current CMake project defines reusable SDK/runtime-style targets and one san
 
 `greenfield_sandbox` links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu`. It is a demo composition root, so it may know about concrete SDL, WebGPU, and Fast2D targets while the reusable SDK layers remain independent of those concrete providers.
 
-The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `clean`, and `format`. The current CMake presets are `dev` and `release` for configure, build, and test flows. No app template, generated export project, install/package/export workflow, Windows-specific workflow, or WASM-specific workflow exists yet in this repository.
+The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `clean`, and `format`. The current CMake presets are `dev` and `release` for configure, build, and test flows. No generated export project, install/package/export workflow, Windows-specific workflow, or WASM-specific workflow exists yet in this repository.
+
+The repository also contains `templates/cpp-cmake-app`, a small non-invasive scaffold that documents the intended future shape of a C++/CMake exported app. It is not automatically included by the root build.
 
 ## Export Vocabulary
 
