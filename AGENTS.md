@@ -25,8 +25,8 @@ Important priorities:
 16. Do not implement WASM support unless explicitly requested for a later milestone, but preserve browser-hosted WebAssembly as a v0.1 target and architecture consideration in docs and boundaries.
 17. Do not let widgets directly call WebGPU APIs.
 
-## M3 Scope Guard
+## M4 Scope Guard
 
-Current M3 work is limited to the narrow Fast2D renderer foundation unless the user explicitly requests a different milestone or slice.
+Current M4 work is limited to narrow renderer backend selection and Fast2D diagnostic/headless guardrail documentation unless the user explicitly requests a different milestone or slice.
 
-Fast2D may consume renderer-neutral render commands, prepare backend-local fill operations, rasterize deterministic plain filled rectangles with clipping, preserve optional shape styling metadata for later backend work, and defer text. Do not make Fast2D the default renderer or add renderer selection/composition, full text/font sharing, richer shape rasterization, rounded corners, borders, antialiasing, platform presentation, mixed-surface composition, Studio, CLI, Canvas2D, Scene3D, shader tools, dashboards, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, or Skia as part of M3 guardrail/doc work.
+The sandbox exposes `--renderer=webgpu` and `--renderer=fast2d`. WebGPU remains the default interactive path. Fast2D may consume renderer-neutral render commands, prepare backend-local fill operations, rasterize deterministic plain filled rectangles with clipping, preserve optional shape styling metadata for later backend work, defer/count text, and report diagnostics from one headless Control Room frame. Do not make Fast2D visibly presentable or the default renderer, and do not add full renderer composition, full text/font sharing, richer shape rasterization, rounded corners, borders, antialiasing, platform presentation, mixed-surface composition, Studio, CLI, Canvas2D, Scene3D, shader tools, dashboards, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, or Skia as part of M4 guardrail/doc work. Visible Fast2D presentation requires a future CPU raster presenter, SDL upload seam, or equivalent platform presentation decision.

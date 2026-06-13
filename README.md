@@ -11,7 +11,8 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - SDL3 windowing and input through a small platform layer
 - Renderer-agnostic render commands that keep UI code independent from backend details
 - A current Dawn/WebGPU accelerated backend with clean ownership boundaries
-- A narrow Fast2D renderer backend foundation for renderer-neutral command consumption
+- Explicit sandbox renderer selection for `--renderer=webgpu` and `--renderer=fast2d`
+- A narrow Fast2D diagnostic/headless renderer backend foundation for renderer-neutral command consumption
 - UI widget, layout, input, text, and render command basics
 - Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
@@ -21,20 +22,24 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 - `greenfield_render_fast2d` exists as a sibling backend target. It consumes renderer-neutral `RenderCommandList` commands, prepares backend-local fill operations, rasterizes deterministic plain filled rectangles with clipping into a CPU raster target, and defers text rasterization.
 - Fast2D preserves optional shape styling metadata such as corner radius, border color, and border thickness for later backend work, but the current CPU raster path draws only plain rectangle fills.
-- Fast2D is not wired as the default sandbox renderer.
+- The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`.
+- WebGPU remains the default interactive sandbox renderer.
+- Fast2D is opt-in diagnostic/headless in the sandbox. It runs one Control Room frame and reports command/fill/text/raster diagnostics, but it is not visibly presentable yet.
+- Visible Fast2D presentation needs a future CPU raster presenter, SDL upload seam, or equivalent platform presentation decision.
+- Renderer choice belongs in app/composition-root policy or narrow renderer-selection vocabulary, not in UI widgets, render commands, surface types, or platform abstractions.
 - `greenfield_render_webgpu` is the current real WebGPU backend target, and `greenfield_webgpu` remains a compatibility alias.
 - Dawn/WebGPU is the current implemented accelerated backend and should remain backend-specific in the architecture direction.
 - The current default build still requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer.
 - Skia may be considered later as an optional renderer/backend, but it is not the initial foundation.
-- Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M3 implementation work.
-- Greenfield CLI is future tooling, not part of current M3 implementation work.
+- Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M4 renderer-selection work.
+- Greenfield CLI is future tooling, not part of current M4 renderer-selection work.
 - Development can be Linux-first for v0.1 work, while preserving Linux, Windows, and browser-hosted WebAssembly as v0.1 release/export architecture considerations.
 - Exported Greenfield apps should be C++/CMake-based first.
 - Hot reload is not a core v0.1 requirement; fast incremental build UX matters more.
 
 ## Not In Scope Yet
 
-The current M3 renderer foundation is intentionally minimal. Renderer selection/composition, full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, platform presentation, mixed-surface composition, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
+The current M4 renderer-selection work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, visible Fast2D platform presentation, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
 
 ## Build
 
@@ -59,7 +64,11 @@ ctest --preset dev --output-on-failure
 
 ```bash
 ./build/dev/bin/greenfield_sandbox
+./build/dev/bin/greenfield_sandbox --renderer=webgpu
+./build/dev/bin/greenfield_sandbox --renderer=fast2d
 ```
+
+`--renderer=webgpu` is the default interactive path. `--renderer=fast2d` runs the current diagnostic/headless Fast2D path and exits after one Control Room frame.
 
 ## Developer Commands
 

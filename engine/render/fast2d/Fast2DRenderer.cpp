@@ -195,7 +195,7 @@ void Fast2DRenderer::RasterizePreparedFillOperations()
 
 void Fast2DRenderer::RasterizeFillRectangle(const Fast2DPreparedFillOperation& fillOperation)
 {
-    // M3 Fast2D preserves shape styling for later backend work, but rasterizes only the plain fill for now.
+    // Fast2D preserves shape styling for later backend work, but rasterizes only the plain fill for now.
     if (_rasterTargetWidth == 0U || _rasterTargetHeight == 0U)
     {
         return;
