@@ -4,6 +4,8 @@ Greenfield is an open-source, general-purpose C++20 UI-first engine for polished
 
 The engine is built around WebGPU-first rendering, an SDL3 platform layer, and renderer-agnostic UI commands so applications can keep UI code independent from backend details.
 
+![Greenfield Control Room sandbox](docs/images/greenfield-control-room.png)
+
 ## Current Scope
 
 - SDL3 windowing and input through a small platform layer

@@ -3,7 +3,9 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include "engine/core/Color.h"
@@ -51,6 +53,12 @@ struct AssetCard
     const char* status;
     const char* detail;
     Color accentColor;
+};
+
+struct SandboxWindowSize
+{
+    int width{1280};
+    int height{720};
 };
 
 constexpr Color BackgroundColor{0.055f, 0.065f, 0.078f, 1.0f};
@@ -143,6 +151,55 @@ std::string FindDefaultFontPath()
     return {};
 }
 
+std::optional<SandboxWindowSize> ParseWindowSize(std::string_view text)
+{
+    const std::size_t separatorPosition = text.find('x');
+    if (separatorPosition == std::string_view::npos)
+    {
+        return std::nullopt;
+    }
+
+    try
+    {
+        const int width = std::stoi(std::string{text.substr(0U, separatorPosition)});
+        const int height = std::stoi(std::string{text.substr(separatorPosition + 1U)});
+        if (width <= 0 || height <= 0)
+        {
+            return std::nullopt;
+        }
+
+        return SandboxWindowSize{.width = width, .height = height};
+    }
+    catch (const std::exception&)
+    {
+        return std::nullopt;
+    }
+}
+
+SandboxWindowSize GetInitialWindowSize(int argumentCount, char* argumentValues[])
+{
+    constexpr std::string_view WindowSizePrefix{"--window-size="};
+    SandboxWindowSize windowSize{};
+
+    for (int argumentIndex = 1; argumentIndex < argumentCount; ++argumentIndex)
+    {
+        const std::string_view argument{argumentValues[argumentIndex]};
+        if (!argument.starts_with(WindowSizePrefix))
+        {
+            continue;
+        }
+
+        const std::optional<SandboxWindowSize> parsedWindowSize =
+            ParseWindowSize(argument.substr(WindowSizePrefix.size()));
+        if (parsedWindowSize.has_value())
+        {
+            windowSize = parsedWindowSize.value();
+        }
+    }
+
+    return windowSize;
+}
+
 void DrawHeader(UiContext& uiContext, const Rect& bounds)
 {
     uiContext.Panel(bounds, MakePanelStyle(Color{0.080f, 0.100f, 0.125f, 0.88f}));
@@ -226,15 +283,10 @@ void DrawSystemHealthPanel(UiContext& uiContext, const Rect& bounds)
 
     const float cardTop = bounds.position.y + 94.0f;
     const float cardGap = 14.0f;
-    const float cardWidth = (bounds.size.x - 44.0f - cardGap * 3.0f) / 4.0f;
+    const Rect cardRowBounds = MakeRectangle(bounds.position.x + 22.0f, cardTop, bounds.size.x - 44.0f, 132.0f);
     for (std::size_t index = 0; index < MetricCards.size(); ++index)
     {
-        DrawMetricCard(uiContext,
-                       MakeRectangle(bounds.position.x + 22.0f + (cardWidth + cardGap) * static_cast<float>(index),
-                                     cardTop,
-                                     cardWidth,
-                                     132.0f),
-                       MetricCards[index]);
+        DrawMetricCard(uiContext, CalculateColumnRegion(cardRowBounds, index, MetricCards.size(), cardGap), MetricCards[index]);
     }
 
     const Rect summaryPanel = MakeRectangle(bounds.position.x + 22.0f, bounds.position.y + 248.0f, bounds.size.x - 44.0f, bounds.size.y - 270.0f);
@@ -257,26 +309,40 @@ void DrawSystemHealthPanel(UiContext& uiContext, const Rect& bounds)
 
 void DrawAlertQueuePanel(UiContext& uiContext, const Rect& bounds)
 {
-    constexpr std::array<AlertItem, 3> Alerts{
+    constexpr std::array<AlertItem, 8> Alerts{
         AlertItem{"Warning", "Load variance", "Node group Delta above baseline", AmberAccentColor},
         AlertItem{"Warning", "Delayed check", "Asset Echo pending confirmation", AmberAccentColor},
         AlertItem{"Offline", "Standby node", "Node Hotel unavailable", RedAccentColor},
+        AlertItem{"Notice", "Review queued", "Operator note awaiting acknowledgement", BlueAccentColor},
+        AlertItem{"Warning", "Capacity drift", "Synthetic load shifted above target", AmberAccentColor},
+        AlertItem{"Notice", "Schedule update", "Maintenance window ready for review", BlueAccentColor},
+        AlertItem{"Warning", "Sensor variance", "Observation stream outside normal band", AmberAccentColor},
+        AlertItem{"Offline", "Backup path", "Recovery check requested", RedAccentColor},
     };
 
     uiContext.Panel(bounds, MakePanelStyle(SurfaceColor));
     DrawSectionTitle(uiContext, MakeRectangle(bounds.position.x + 20.0f, bounds.position.y + 18.0f, 260.0f, 54.0f), "Alert Queue", "Prioritized generic observations");
 
-    float itemTop = bounds.position.y + 86.0f;
-    for (const AlertItem& alert : Alerts)
+    const float itemGap = 10.0f;
+    const float itemHeight = 76.0f;
+    const Rect alertListBounds =
+        MakeRectangle(bounds.position.x + 18.0f, bounds.position.y + 86.0f, bounds.size.x - 36.0f, bounds.size.y - 104.0f);
+    const float contentHeight = static_cast<float>(Alerts.size()) * itemHeight + static_cast<float>(Alerts.size() - 1U) * itemGap;
+    const Rect contentBounds = uiContext.BeginVerticalScrollPanel("alert-queue", alertListBounds, contentHeight);
+    for (std::size_t index = 0; index < Alerts.size(); ++index)
     {
-        const Rect alertBounds = MakeRectangle(bounds.position.x + 18.0f, itemTop, bounds.size.x - 36.0f, 76.0f);
+        const AlertItem& alert = Alerts[index];
+        const Rect alertBounds = MakeRectangle(contentBounds.position.x,
+                                               contentBounds.position.y + (itemHeight + itemGap) * static_cast<float>(index),
+                                               contentBounds.size.x,
+                                               itemHeight);
         uiContext.Panel(alertBounds, MakePanelStyle(SurfaceRaisedColor));
         DrawAccentRule(uiContext, alertBounds, alert.accentColor);
-        DrawText(uiContext, alert.severity, alertBounds.position.x + 16.0f, alertBounds.position.y + 12.0f, 90.0f, 20.0f, 13.0f, alert.accentColor);
-        DrawText(uiContext, alert.title, alertBounds.position.x + 16.0f, alertBounds.position.y + 33.0f, alertBounds.size.x - 30.0f, 22.0f, 17.0f, TextPrimaryColor);
-        DrawText(uiContext, alert.detail, alertBounds.position.x + 16.0f, alertBounds.position.y + 56.0f, alertBounds.size.x - 30.0f, 18.0f, 12.0f, TextSecondaryColor);
-        itemTop += 90.0f;
+        DrawText(uiContext, alert.severity, alertBounds.position.x + 16.0f, alertBounds.position.y + 9.0f, 90.0f, 18.0f, 12.0f, alert.accentColor);
+        DrawText(uiContext, alert.title, alertBounds.position.x + 16.0f, alertBounds.position.y + 28.0f, alertBounds.size.x - 30.0f, 18.0f, 15.0f, TextPrimaryColor);
+        DrawText(uiContext, alert.detail, alertBounds.position.x + 16.0f, alertBounds.position.y + 48.0f, alertBounds.size.x - 30.0f, 14.0f, 10.0f, TextSecondaryColor);
     }
+    uiContext.EndVerticalScrollPanel();
 }
 
 void DrawControlActionsPanel(UiContext& uiContext, const Rect& bounds, DashboardState& dashboardState)
@@ -316,15 +382,13 @@ void DrawAssetStatusPanel(UiContext& uiContext, const Rect& bounds, DashboardSta
     DrawSectionTitle(uiContext, MakeRectangle(bounds.position.x + 22.0f, bounds.position.y + 18.0f, 300.0f, 54.0f), "Asset Status", "Interactive synthetic asset cards");
 
     const float cardGap = 14.0f;
-    const float cardWidth = (bounds.size.x - 44.0f - cardGap * 3.0f) / 4.0f;
+    const Rect cardRowBounds =
+        MakeRectangle(bounds.position.x + 22.0f, bounds.position.y + 78.0f, bounds.size.x - 44.0f, bounds.size.y - 96.0f);
     for (std::size_t index = 0; index < AssetCards.size(); ++index)
     {
         const AssetCard& asset = AssetCards[index];
         const bool isSelected = dashboardState.selectedAssetIndex == static_cast<int>(index);
-        const Rect cardBounds = MakeRectangle(bounds.position.x + 22.0f + (cardWidth + cardGap) * static_cast<float>(index),
-                                              bounds.position.y + 78.0f,
-                                              cardWidth,
-                                              bounds.size.y - 96.0f);
+        const Rect cardBounds = CalculateColumnRegion(cardRowBounds, index, AssetCards.size(), cardGap);
         if (uiContext.Button(std::string{"asset-"} + std::to_string(index), "", cardBounds, MakeInteractivePanelStyle(isSelected, asset.accentColor)))
         {
             dashboardState.selectedAssetIndex = static_cast<int>(index);
@@ -335,54 +399,54 @@ void DrawAssetStatusPanel(UiContext& uiContext, const Rect& bounds, DashboardSta
                             .fillColor = asset.accentColor,
                             .cornerRadius = 3.0f,
                         });
-        DrawText(uiContext, asset.name, cardBounds.position.x + 16.0f, cardBounds.position.y + 32.0f, cardBounds.size.x - 32.0f, 26.0f, 20.0f, TextPrimaryColor);
-        DrawText(uiContext, asset.status, cardBounds.position.x + 16.0f, cardBounds.position.y + 60.0f, cardBounds.size.x - 32.0f, 22.0f, 15.0f, asset.accentColor);
-        DrawText(uiContext, asset.detail, cardBounds.position.x + 16.0f, cardBounds.position.y + 84.0f, cardBounds.size.x - 32.0f, 24.0f, 12.0f, TextSecondaryColor);
+        DrawText(uiContext, asset.name, cardBounds.position.x + 16.0f, cardBounds.position.y + 30.0f, cardBounds.size.x - 32.0f, 24.0f, 18.0f, TextPrimaryColor);
+        DrawText(uiContext, asset.status, cardBounds.position.x + 16.0f, cardBounds.position.y + 56.0f, cardBounds.size.x - 32.0f, 18.0f, 13.0f, asset.accentColor);
+        DrawText(uiContext, asset.detail, cardBounds.position.x + 16.0f, cardBounds.position.y + 76.0f, cardBounds.size.x - 32.0f, 16.0f, 10.0f, TextSecondaryColor);
     }
 }
 
-void BuildControlRoomUi(UiContext& uiContext, int windowWidth, int windowHeight, DashboardState& dashboardState)
+void BuildControlRoomUi(UiContext& uiContext, const Rect& rootBounds, DashboardState& dashboardState)
 {
-    const float width = static_cast<float>(windowWidth);
-    const float height = static_cast<float>(windowHeight);
-    const float margin = 24.0f;
-    const float headerHeight = 88.0f;
-    const float navigationWidth = 178.0f;
-    const float gap = 18.0f;
+    const float margin = ClampLayoutValue(PercentageWidth(rootBounds, 0.01875f), 24.0f, 36.0f);
+    const float gap = ClampLayoutValue(PercentageWidth(rootBounds, 0.014f), 18.0f, 24.0f);
+    const float headerHeight = ClampLayoutValue(PercentageHeight(rootBounds, 0.122f), 88.0f, 112.0f);
 
-    uiContext.DrawFilledRectangle(MakeRectangle(0.0f, 0.0f, width, height), BackgroundColor);
+    uiContext.DrawFilledRectangle(rootBounds, BackgroundColor);
 
-    const Rect headerBounds = MakeRectangle(margin, margin, width - margin * 2.0f, headerHeight);
-    DrawHeader(uiContext, headerBounds);
+    const Rect dashboardBounds = InsetRectangle(rootBounds, margin);
+    const LayoutSplit headerAndContent = SplitRectangleVerticallyFixedFlexible(dashboardBounds, headerHeight, gap);
+    DrawHeader(uiContext, headerAndContent.first);
 
-    const float contentTop = margin + headerHeight + gap;
-    const float contentHeight = height - contentTop - margin;
-    const Rect navigationBounds = MakeRectangle(margin, contentTop, navigationWidth, contentHeight);
-    DrawNavigationRail(uiContext, navigationBounds, dashboardState);
+    const float navigationWidth = ClampLayoutValue(PercentageWidth(rootBounds, 0.14f), 178.0f, 220.0f);
+    const LayoutSplit navigationAndMain =
+        SplitRectangleHorizontallyFixedFlexible(headerAndContent.second, navigationWidth, gap);
+    DrawNavigationRail(uiContext, navigationAndMain.first, dashboardState);
 
-    const float mainLeft = margin + navigationWidth + gap;
-    const float mainWidth = width - mainLeft - margin;
-    const float rightColumnWidth = 330.0f;
-    const float centerWidth = mainWidth - rightColumnWidth - gap;
-    const float bottomPanelHeight = 196.0f;
+    const float rightColumnWidth = ClampLayoutValue(PercentageWidth(navigationAndMain.second, 0.30f), 330.0f, 420.0f);
+    const LayoutSplit centerAndRight =
+        SplitRectangleHorizontallyFixedFlexible(navigationAndMain.second, rightColumnWidth, gap, FixedRegion::Second);
 
-    DrawSystemHealthPanel(uiContext, MakeRectangle(mainLeft, contentTop, centerWidth, contentHeight - bottomPanelHeight - gap));
-    DrawAssetStatusPanel(uiContext, MakeRectangle(mainLeft, height - margin - bottomPanelHeight, centerWidth, bottomPanelHeight), dashboardState);
-    DrawAlertQueuePanel(uiContext, MakeRectangle(mainLeft + centerWidth + gap, contentTop, rightColumnWidth, contentHeight * 0.58f));
-    DrawControlActionsPanel(uiContext,
-                            MakeRectangle(mainLeft + centerWidth + gap, contentTop + contentHeight * 0.58f + gap, rightColumnWidth, contentHeight * 0.42f - gap),
-                            dashboardState);
+    const float bottomPanelHeight = ClampLayoutValue(PercentageHeight(centerAndRight.first, 0.32f), 196.0f, 260.0f);
+    const LayoutSplit healthAndAssets =
+        SplitRectangleVerticallyFixedFlexible(centerAndRight.first, bottomPanelHeight, gap, FixedRegion::Second);
+    DrawSystemHealthPanel(uiContext, healthAndAssets.first);
+    DrawAssetStatusPanel(uiContext, healthAndAssets.second, dashboardState);
+
+    const LayoutSplit alertsAndActions = SplitRectangleVerticallyByPercentage(centerAndRight.second, 0.58f, gap);
+    DrawAlertQueuePanel(uiContext, alertsAndActions.first);
+    DrawControlActionsPanel(uiContext, alertsAndActions.second, dashboardState);
 }
 
 } // namespace
 
-int main()
+int main(int argumentCount, char* argumentValues[])
 {
     try
     {
         std::cout << "Starting Greenfield sandbox\n";
 
-        SdlWindow window{"Greenfield Sandbox", 1280, 720};
+        const SandboxWindowSize initialWindowSize = GetInitialWindowSize(argumentCount, argumentValues);
+        SdlWindow window{"Greenfield Sandbox", initialWindowSize.width, initialWindowSize.height};
         {
             SdlStartupPresenter startupPresenter{window};
             startupPresenter.DrawFrame();
@@ -440,7 +504,7 @@ int main()
             };
 
             uiContext.BeginFrame(layout, window.GetInputState());
-            BuildControlRoomUi(uiContext, window.GetWidth(), window.GetHeight(), dashboardState);
+            BuildControlRoomUi(uiContext, layout.bounds, dashboardState);
 
             const auto& renderCommands = uiContext.EndFrame();
             renderer.Submit(renderCommands);

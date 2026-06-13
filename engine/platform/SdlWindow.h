@@ -32,6 +32,7 @@ private:
     void HandleMouseMotion(float x, float y);
     void HandleMouseButtonDown(unsigned char button, float x, float y);
     void HandleMouseButtonUp(unsigned char button, float x, float y);
+    void HandleMouseWheel(float x, float y, float verticalScrollDelta);
     void UpdateWindowSize();
 
     std::string _title;

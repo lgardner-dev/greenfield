@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "engine/input/InputState.h"
@@ -44,6 +45,8 @@ public:
     void DrawFilledRectangle(const Rect& rectangle, const Color& color, float cornerRadius = 0.0f);
     void DrawRectangle(const Rect& rectangle, const RectangleStyle& rectangleStyle);
     void DrawText(const std::string& text, const Rect& bounds, float fontSize, const Color& color);
+    [[nodiscard]] Rect BeginVerticalScrollPanel(const std::string& name, const Rect& bounds, float contentHeight);
+    void EndVerticalScrollPanel();
     Rect Text(const std::string& text);
     Rect Text(const std::string& text, float fontSize, const Color& color);
     Rect Text(const std::string& text, const Vec2& itemSize, float fontSize, const Color& color);
@@ -70,6 +73,7 @@ public:
     void SetStyle(const Style& style);
     [[nodiscard]] const Style& GetStyle() const noexcept;
     [[nodiscard]] const Layout& GetLayout() const noexcept;
+    [[nodiscard]] float GetVerticalScrollOffset(const std::string& name) const;
 
 private:
     struct LayoutFrame
@@ -81,6 +85,12 @@ private:
         Vec2 itemSize{};
     };
 
+    struct ScrollPanelFrame
+    {
+        std::string name{};
+        Rect bounds{};
+    };
+
     void BeginLayoutContainer(const LayoutContainer& container, LayoutDirection direction);
     void EndLayoutContainer(LayoutDirection direction);
     [[nodiscard]] Rect GetNextLayoutBounds(const Vec2& requestedItemSize);
@@ -90,6 +100,7 @@ private:
     [[nodiscard]] bool IsButtonActive(const std::string& name) const;
     [[nodiscard]] Color GetButtonColor(const std::string& name, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
+    [[nodiscard]] float GetClampedScrollOffset(const std::string& name, const Rect& bounds, float contentHeight);
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
 
     Style _style{};
@@ -97,6 +108,8 @@ private:
     InputState _inputState{};
     std::string _activeButtonName{};
     std::vector<LayoutFrame> _layoutStack{};
+    std::vector<ScrollPanelFrame> _scrollPanelStack{};
+    std::unordered_map<std::string, float> _verticalScrollOffsets{};
     RenderCommandList _renderCommands{};
 };
 

@@ -67,6 +67,20 @@ int main()
         return EXIT_FAILURE;
     }
 
+    RenderCommandList clipCommands;
+    const Rect clipBounds{
+        .position = Vec2{12.0f, 16.0f},
+        .size = Vec2{80.0f, 90.0f},
+    };
+    clipCommands.PushClip(clipBounds);
+    clipCommands.PopClip();
+    if (clipCommands.Size() != 2U || clipCommands.Commands()[0].type != RenderCommandType::PushClip ||
+        clipCommands.Commands()[1].type != RenderCommandType::PopClip ||
+        !RectanglesMatch(clipCommands.Commands()[0].rectangle, clipBounds))
+    {
+        return EXIT_FAILURE;
+    }
+
     const Layout layout{
         .bounds = bounds,
         .padding = 12.0f,
@@ -75,6 +89,107 @@ int main()
     const Style style{};
     if (layout.bounds.size.x <= 0.0f || style.accent.alpha <= 0.0f || style.textPrimary.alpha <= 0.0f ||
         style.panelCornerRadius <= 0.0f || style.panelBorderThickness <= 0.0f || style.panelBackground.alpha >= 1.0f)
+    {
+        return EXIT_FAILURE;
+    }
+
+    const Rect responsiveBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{300.0f, 180.0f},
+    };
+
+    if (!RectanglesMatch(InsetRectangle(responsiveBounds, 10.0f),
+                         Rect{
+                             .position = Vec2{20.0f, 30.0f},
+                             .size = Vec2{280.0f, 160.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    const Rect intersectedRectangle =
+        IntersectRectangles(responsiveBounds, Rect{.position = Vec2{250.0f, 100.0f}, .size = Vec2{120.0f, 140.0f}});
+    if (!RectanglesMatch(intersectedRectangle,
+                         Rect{
+                             .position = Vec2{250.0f, 100.0f},
+                             .size = Vec2{60.0f, 100.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    const Rect emptyIntersection =
+        IntersectRectangles(responsiveBounds, Rect{.position = Vec2{400.0f, 20.0f}, .size = Vec2{20.0f, 20.0f}});
+    if (!RectanglesMatch(emptyIntersection,
+                         Rect{
+                             .position = Vec2{400.0f, 20.0f},
+                             .size = Vec2{0.0f, 20.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(InsetRectangle(responsiveBounds,
+                                        EdgeInsets{.left = 8.0f, .top = 12.0f, .right = 18.0f, .bottom = 22.0f}),
+                         Rect{
+                             .position = Vec2{18.0f, 32.0f},
+                             .size = Vec2{274.0f, 146.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    const LayoutSplit percentageSplit = SplitRectangleHorizontallyByPercentage(responsiveBounds, 0.25f, 12.0f);
+    if (!RectanglesMatch(percentageSplit.first,
+                         Rect{
+                             .position = Vec2{10.0f, 20.0f},
+                             .size = Vec2{72.0f, 180.0f},
+                         }) ||
+        !RectanglesMatch(percentageSplit.second,
+                         Rect{
+                             .position = Vec2{94.0f, 20.0f},
+                             .size = Vec2{216.0f, 180.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    const Vec2 clampedSize = ClampSize(Vec2{80.0f, 260.0f}, Vec2{100.0f, 120.0f}, Vec2{240.0f, 220.0f});
+    if (clampedSize.x != 100.0f || clampedSize.y != 220.0f)
+    {
+        return EXIT_FAILURE;
+    }
+
+    const LayoutSplit fixedFlexibleSplit =
+        SplitRectangleHorizontallyFixedFlexible(responsiveBounds, 96.0f, 14.0f, FixedRegion::Second);
+    if (!RectanglesMatch(fixedFlexibleSplit.first,
+                         Rect{
+                             .position = Vec2{10.0f, 20.0f},
+                             .size = Vec2{190.0f, 180.0f},
+                         }) ||
+        !RectanglesMatch(fixedFlexibleSplit.second,
+                         Rect{
+                             .position = Vec2{214.0f, 20.0f},
+                             .size = Vec2{96.0f, 180.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(CalculateColumnRegion(responsiveBounds, 1U, 3U, 15.0f),
+                         Rect{
+                             .position = Vec2{115.0f, 20.0f},
+                             .size = Vec2{90.0f, 180.0f},
+                         }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!RectanglesMatch(CalculateRowRegion(responsiveBounds, 2U, 3U, 15.0f),
+                         Rect{
+                             .position = Vec2{10.0f, 150.0f},
+                             .size = Vec2{300.0f, 50.0f},
+                         }))
     {
         return EXIT_FAILURE;
     }
@@ -182,6 +297,61 @@ int main()
                              .position = Vec2{14.0f, 16.0f},
                              .size = Vec2{140.0f, 26.0f},
                          }))
+    {
+        return EXIT_FAILURE;
+    }
+
+    UiContext scrollContext;
+    const Rect scrollPanelBounds{
+        .position = Vec2{20.0f, 30.0f},
+        .size = Vec2{120.0f, 80.0f},
+    };
+    scrollContext.BeginFrame(layout,
+                             InputState{
+                                 .mousePosition = Vec2{40.0f, 50.0f},
+                                 .verticalScrollDelta = -10.0f,
+                             });
+    const Rect scrolledContent = scrollContext.BeginVerticalScrollPanel("scroll-test", scrollPanelBounds, 200.0f);
+    scrollContext.EndVerticalScrollPanel();
+    const auto& scrollCommands = scrollContext.EndFrame();
+    if (scrollContext.GetVerticalScrollOffset("scroll-test") != 120.0f ||
+        scrolledContent.position.y != -90.0f || scrollCommands.Size() != 2U ||
+        scrollCommands.Commands()[0].type != RenderCommandType::PushClip ||
+        scrollCommands.Commands()[1].type != RenderCommandType::PopClip)
+    {
+        return EXIT_FAILURE;
+    }
+
+    scrollContext.BeginFrame(layout,
+                             InputState{
+                                 .mousePosition = Vec2{40.0f, 50.0f},
+                                 .verticalScrollDelta = 10.0f,
+                             });
+    const Rect resetContent = scrollContext.BeginVerticalScrollPanel("scroll-test", scrollPanelBounds, 200.0f);
+    scrollContext.EndVerticalScrollPanel();
+    const auto& resetScrollCommands = scrollContext.EndFrame();
+    if (scrollContext.GetVerticalScrollOffset("scroll-test") != 0.0f || resetContent.position.y != 30.0f ||
+        resetScrollCommands.Size() != 2U)
+    {
+        return EXIT_FAILURE;
+    }
+
+    scrollContext.BeginFrame(layout,
+                             InputState{
+                                 .mousePosition = Vec2{200.0f, 200.0f},
+                                 .verticalScrollDelta = -10.0f,
+                             });
+    const Rect unchangedContent = scrollContext.BeginVerticalScrollPanel("scroll-test", scrollPanelBounds, 200.0f);
+    scrollContext.EndVerticalScrollPanel();
+    const auto& unchangedScrollCommands = scrollContext.EndFrame();
+    if (scrollContext.GetVerticalScrollOffset("scroll-test") != 0.0f || unchangedContent.position.y != 30.0f ||
+        unchangedScrollCommands.Size() != 2U)
+    {
+        return EXIT_FAILURE;
+    }
+
+    const InputState defaultInputState{};
+    if (defaultInputState.verticalScrollDelta != 0.0f)
     {
         return EXIT_FAILURE;
     }

@@ -278,8 +278,7 @@ void WebGpuRenderer::EndFrame()
 
     wgpu::CommandEncoder commandEncoder = _context->GetDevice().CreateCommandEncoder();
     wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDescriptor);
-    DrawRectangles(renderPass);
-    DrawText(renderPass);
+    DrawRenderCommands(renderPass);
     renderPass.End();
 
     wgpu::CommandBuffer commandBuffer = commandEncoder.Finish();
@@ -903,6 +902,269 @@ void WebGpuRenderer::DrawText(wgpu::RenderPassEncoder& renderPass)
         renderPass.SetBindGroup(0, textBatch.bindGroup);
         renderPass.Draw(textBatch.vertexCount, 1, textBatch.firstVertex);
     }
+}
+
+void WebGpuRenderer::DrawRenderCommands(wgpu::RenderPassEncoder& renderPass)
+{
+    BuildRenderBatches();
+    WritePreparedVertexBuffers();
+
+    ApplyFullFrameScissor(renderPass);
+    for (const DrawBatch& drawBatch : _drawBatches)
+    {
+        DrawPreparedBatch(renderPass, drawBatch);
+    }
+}
+
+void WebGpuRenderer::BuildRenderBatches()
+{
+    std::vector<Rect> clipStack;
+    _rectangleVertices.clear();
+    _textVertices.clear();
+    _drawBatches.clear();
+
+    for (const RenderCommand& renderCommand : _submittedCommands.Commands())
+    {
+        if (renderCommand.type == RenderCommandType::PushClip)
+        {
+            const Rect clipRectangle = clipStack.empty() ? renderCommand.rectangle
+                                                         : IntersectRectangles(clipStack.back(), renderCommand.rectangle);
+            clipStack.push_back(clipRectangle);
+            continue;
+        }
+
+        if (renderCommand.type == RenderCommandType::PopClip)
+        {
+            if (!clipStack.empty())
+            {
+                clipStack.pop_back();
+            }
+            continue;
+        }
+
+        if (!clipStack.empty() && !HasPositiveArea(clipStack.back()))
+        {
+            continue;
+        }
+
+        if (renderCommand.type == RenderCommandType::FillRectangle)
+        {
+            const auto firstVertex = static_cast<std::uint32_t>(_rectangleVertices.size());
+            AppendRectangleVertices(renderCommand);
+            const auto vertexCount = static_cast<std::uint32_t>(_rectangleVertices.size()) - firstVertex;
+            if (vertexCount == 0)
+            {
+                continue;
+            }
+
+            _drawBatches.push_back(DrawBatch{
+                .type = RenderCommandType::FillRectangle,
+                .hasClip = !clipStack.empty(),
+                .clipRectangle = clipStack.empty() ? Rect{} : clipStack.back(),
+                .bindGroup = {},
+                .firstVertex = firstVertex,
+                .vertexCount = vertexCount,
+            });
+        }
+        else if (renderCommand.type == RenderCommandType::DrawText)
+        {
+            FontAtlas* fontAtlas = GetOrCreateFontAtlas(renderCommand.fontSize);
+            if (fontAtlas == nullptr)
+            {
+                continue;
+            }
+
+            const auto firstVertex = static_cast<std::uint32_t>(_textVertices.size());
+            AppendTextVertices(renderCommand, *fontAtlas);
+            const auto vertexCount = static_cast<std::uint32_t>(_textVertices.size()) - firstVertex;
+            if (vertexCount == 0)
+            {
+                continue;
+            }
+
+            _drawBatches.push_back(DrawBatch{
+                .type = RenderCommandType::DrawText,
+                .hasClip = !clipStack.empty(),
+                .clipRectangle = clipStack.empty() ? Rect{} : clipStack.back(),
+                .bindGroup = fontAtlas->bindGroup,
+                .firstVertex = firstVertex,
+                .vertexCount = vertexCount,
+            });
+        }
+    }
+}
+
+void WebGpuRenderer::AppendRectangleVertices(const RenderCommand& renderCommand)
+{
+    if (_context->GetSurfaceWidth() == 0 || _context->GetSurfaceHeight() == 0 || !HasPositiveArea(renderCommand.rectangle))
+    {
+        return;
+    }
+
+    const Rect& rectangle = renderCommand.rectangle;
+    const float left = ConvertPixelXToClipSpace(rectangle.position.x, _context->GetSurfaceWidth());
+    const float right =
+        ConvertPixelXToClipSpace(rectangle.position.x + rectangle.size.x, _context->GetSurfaceWidth());
+    const float top = ConvertPixelYToClipSpace(rectangle.position.y, _context->GetSurfaceHeight());
+    const float bottom =
+        ConvertPixelYToClipSpace(rectangle.position.y + rectangle.size.y, _context->GetSurfaceHeight());
+
+    const RectangleVertex topLeft =
+        MakeRectangleVertex(left, top, rectangle.position.x, rectangle.position.y, renderCommand);
+    const RectangleVertex topRight =
+        MakeRectangleVertex(right, top, rectangle.position.x + rectangle.size.x, rectangle.position.y, renderCommand);
+    const RectangleVertex bottomLeft =
+        MakeRectangleVertex(left, bottom, rectangle.position.x, rectangle.position.y + rectangle.size.y, renderCommand);
+    const RectangleVertex bottomRight = MakeRectangleVertex(
+        right, bottom, rectangle.position.x + rectangle.size.x, rectangle.position.y + rectangle.size.y, renderCommand);
+
+    _rectangleVertices.push_back(topLeft);
+    _rectangleVertices.push_back(bottomLeft);
+    _rectangleVertices.push_back(topRight);
+    _rectangleVertices.push_back(topRight);
+    _rectangleVertices.push_back(bottomLeft);
+    _rectangleVertices.push_back(bottomRight);
+}
+
+void WebGpuRenderer::WritePreparedVertexBuffers()
+{
+    if (!_rectangleVertices.empty())
+    {
+        EnsureRectanglePipeline();
+
+        const std::size_t vertexDataSize = _rectangleVertices.size() * sizeof(RectangleVertex);
+        EnsureVertexBuffer(vertexDataSize);
+
+        _context->GetQueue().WriteBuffer(_rectangleVertexBuffer, 0, _rectangleVertices.data(), vertexDataSize);
+    }
+
+    if (!_textVertices.empty())
+    {
+        EnsureTextPipeline();
+
+        const std::size_t vertexDataSize = _textVertices.size() * sizeof(TextVertex);
+        EnsureTextVertexBuffer(vertexDataSize);
+
+        _context->GetQueue().WriteBuffer(_textVertexBuffer, 0, _textVertices.data(), vertexDataSize);
+    }
+}
+
+void WebGpuRenderer::DrawPreparedBatch(wgpu::RenderPassEncoder& renderPass, const DrawBatch& drawBatch)
+{
+    if (drawBatch.hasClip)
+    {
+        ApplyClipScissor(renderPass, drawBatch.clipRectangle);
+    }
+    else
+    {
+        ApplyFullFrameScissor(renderPass);
+    }
+
+    if (drawBatch.type == RenderCommandType::FillRectangle)
+    {
+        const std::uint64_t vertexBufferOffset = static_cast<std::uint64_t>(drawBatch.firstVertex) * sizeof(RectangleVertex);
+        const std::uint64_t vertexBufferSize = static_cast<std::uint64_t>(drawBatch.vertexCount) * sizeof(RectangleVertex);
+
+        renderPass.SetPipeline(_rectanglePipeline);
+        renderPass.SetVertexBuffer(0, _rectangleVertexBuffer, vertexBufferOffset, vertexBufferSize);
+        renderPass.Draw(drawBatch.vertexCount);
+        return;
+    }
+
+    if (drawBatch.type == RenderCommandType::DrawText)
+    {
+        const std::uint64_t vertexBufferOffset = static_cast<std::uint64_t>(drawBatch.firstVertex) * sizeof(TextVertex);
+        const std::uint64_t vertexBufferSize = static_cast<std::uint64_t>(drawBatch.vertexCount) * sizeof(TextVertex);
+
+        renderPass.SetPipeline(_textPipeline);
+        renderPass.SetVertexBuffer(0, _textVertexBuffer, vertexBufferOffset, vertexBufferSize);
+        renderPass.SetBindGroup(0, drawBatch.bindGroup);
+        renderPass.Draw(drawBatch.vertexCount);
+    }
+}
+
+void WebGpuRenderer::DrawRectangleCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand)
+{
+    _rectangleVertices.clear();
+    AppendRectangleVertices(renderCommand);
+    if (_rectangleVertices.empty())
+    {
+        return;
+    }
+
+    EnsureRectanglePipeline();
+
+    const std::size_t vertexDataSize = _rectangleVertices.size() * sizeof(RectangleVertex);
+    EnsureVertexBuffer(vertexDataSize);
+
+    _context->GetQueue().WriteBuffer(_rectangleVertexBuffer, 0, _rectangleVertices.data(), vertexDataSize);
+
+    renderPass.SetPipeline(_rectanglePipeline);
+    renderPass.SetVertexBuffer(0, _rectangleVertexBuffer, 0, vertexDataSize);
+    renderPass.Draw(static_cast<std::uint32_t>(_rectangleVertices.size()));
+}
+
+void WebGpuRenderer::DrawTextCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand)
+{
+    if (!HasPositiveArea(renderCommand.rectangle) || renderCommand.text.empty())
+    {
+        return;
+    }
+
+    FontAtlas* fontAtlas = GetOrCreateFontAtlas(renderCommand.fontSize);
+    if (fontAtlas == nullptr)
+    {
+        return;
+    }
+
+    _textVertices.clear();
+    AppendTextVertices(renderCommand, *fontAtlas);
+    if (_textVertices.empty())
+    {
+        return;
+    }
+
+    const std::size_t vertexDataSize = _textVertices.size() * sizeof(TextVertex);
+    EnsureTextVertexBuffer(vertexDataSize);
+    _context->GetQueue().WriteBuffer(_textVertexBuffer, 0, _textVertices.data(), vertexDataSize);
+
+    renderPass.SetPipeline(_textPipeline);
+    renderPass.SetVertexBuffer(0, _textVertexBuffer, 0, vertexDataSize);
+    renderPass.SetBindGroup(0, fontAtlas->bindGroup);
+    renderPass.Draw(static_cast<std::uint32_t>(_textVertices.size()));
+}
+
+void WebGpuRenderer::ApplyFullFrameScissor(wgpu::RenderPassEncoder& renderPass) const
+{
+    renderPass.SetScissorRect(0, 0, _context->GetSurfaceWidth(), _context->GetSurfaceHeight());
+}
+
+void WebGpuRenderer::ApplyClipScissor(wgpu::RenderPassEncoder& renderPass, const Rect& clipRectangle) const
+{
+    const ScissorRectangle scissorRectangle = MakeScissorRectangle(clipRectangle);
+    renderPass.SetScissorRect(scissorRectangle.x, scissorRectangle.y, scissorRectangle.width, scissorRectangle.height);
+}
+
+WebGpuRenderer::ScissorRectangle WebGpuRenderer::MakeScissorRectangle(const Rect& clipRectangle) const noexcept
+{
+    const float surfaceWidth = static_cast<float>(_context->GetSurfaceWidth());
+    const float surfaceHeight = static_cast<float>(_context->GetSurfaceHeight());
+    const float left = std::clamp(clipRectangle.position.x, 0.0f, surfaceWidth);
+    const float top = std::clamp(clipRectangle.position.y, 0.0f, surfaceHeight);
+    const float right = std::clamp(clipRectangle.position.x + clipRectangle.size.x, 0.0f, surfaceWidth);
+    const float bottom = std::clamp(clipRectangle.position.y + clipRectangle.size.y, 0.0f, surfaceHeight);
+
+    const auto x = static_cast<std::uint32_t>(std::floor(left));
+    const auto y = static_cast<std::uint32_t>(std::floor(top));
+    const auto rightEdge = static_cast<std::uint32_t>(std::ceil(std::max(left, right)));
+    const auto bottomEdge = static_cast<std::uint32_t>(std::ceil(std::max(top, bottom)));
+
+    return ScissorRectangle{
+        .x = x,
+        .y = y,
+        .width = rightEdge - x,
+        .height = bottomEdge - y,
+    };
 }
 
 } // namespace greenfield

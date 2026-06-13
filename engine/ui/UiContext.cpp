@@ -9,6 +9,7 @@ namespace
 constexpr Vec2 DefaultLayoutItemSize{160.0f, 48.0f};
 constexpr float DefaultTextFontSize{18.0f};
 constexpr float ButtonHorizontalTextInset{16.0f};
+constexpr float MouseWheelScrollPixels{42.0f};
 
 } // namespace
 
@@ -23,6 +24,7 @@ void UiContext::BeginFrame(const Layout& layout, const InputState& inputState)
     _inputState = inputState;
     _renderCommands.Clear();
     _layoutStack.clear();
+    _scrollPanelStack.clear();
     BeginColumn(LayoutContainer{
         .bounds = _layout.bounds,
         .padding = _layout.padding,
@@ -91,6 +93,32 @@ void UiContext::DrawText(const std::string& text, const Rect& bounds, float font
     }
 
     _renderCommands.AddText(text, bounds, fontSize, color);
+}
+
+Rect UiContext::BeginVerticalScrollPanel(const std::string& name, const Rect& bounds, float contentHeight)
+{
+    const float scrollOffset = GetClampedScrollOffset(name, bounds, contentHeight);
+    _renderCommands.PushClip(bounds);
+    _scrollPanelStack.push_back(ScrollPanelFrame{
+        .name = name,
+        .bounds = bounds,
+    });
+
+    return Rect{
+        .position = Vec2{.x = bounds.position.x, .y = bounds.position.y - scrollOffset},
+        .size = Vec2{.x = bounds.size.x, .y = contentHeight},
+    };
+}
+
+void UiContext::EndVerticalScrollPanel()
+{
+    if (_scrollPanelStack.empty())
+    {
+        return;
+    }
+
+    _scrollPanelStack.pop_back();
+    _renderCommands.PopClip();
 }
 
 Rect UiContext::Text(const std::string& text)
@@ -249,6 +277,17 @@ const Layout& UiContext::GetLayout() const noexcept
     return _layout;
 }
 
+float UiContext::GetVerticalScrollOffset(const std::string& name) const
+{
+    const auto scrollOffset = _verticalScrollOffsets.find(name);
+    if (scrollOffset == _verticalScrollOffsets.end())
+    {
+        return 0.0f;
+    }
+
+    return scrollOffset->second;
+}
+
 void UiContext::BeginLayoutContainer(const LayoutContainer& container, LayoutDirection direction)
 {
     const Rect contentBounds = GetContentBounds(container);
@@ -365,6 +404,20 @@ Color UiContext::GetButtonColor(const std::string& name, const Rect& bounds, con
     }
 
     return buttonStyle.normal;
+}
+
+float UiContext::GetClampedScrollOffset(const std::string& name, const Rect& bounds, float contentHeight)
+{
+    const float maximumScrollOffset = contentHeight > bounds.size.y ? contentHeight - bounds.size.y : 0.0f;
+    float scrollOffset = GetVerticalScrollOffset(name);
+    if (ContainsPoint(bounds, _inputState.mousePosition))
+    {
+        scrollOffset -= _inputState.verticalScrollDelta * MouseWheelScrollPixels;
+    }
+
+    scrollOffset = ClampLayoutValue(scrollOffset, 0.0f, maximumScrollOffset);
+    _verticalScrollOffsets[name] = scrollOffset;
+    return scrollOffset;
 }
 
 void UiContext::DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle)

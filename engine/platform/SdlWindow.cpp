@@ -99,6 +99,10 @@ void SdlWindow::PollEvents()
         {
             HandleMouseButtonUp(event.button.button, event.button.x, event.button.y);
         }
+        else if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == SDL_GetWindowID(_window))
+        {
+            HandleMouseWheel(event.wheel.mouse_x, event.wheel.mouse_y, event.wheel.y);
+        }
     }
 
     UpdateWindowSize();
@@ -133,6 +137,7 @@ void SdlWindow::BeginInputFrame()
 {
     _inputState.leftMouseButtonPressed = false;
     _inputState.leftMouseButtonReleased = false;
+    _inputState.verticalScrollDelta = 0.0f;
 }
 
 void SdlWindow::HandleMouseMotion(float x, float y)
@@ -170,6 +175,12 @@ void SdlWindow::HandleMouseButtonUp(unsigned char button, float x, float y)
     }
 
     _inputState.leftMouseButtonDown = false;
+}
+
+void SdlWindow::HandleMouseWheel(float x, float y, float verticalScrollDelta)
+{
+    _inputState.mousePosition = Vec2{x, y};
+    _inputState.verticalScrollDelta += verticalScrollDelta;
 }
 
 void SdlWindow::UpdateWindowSize()

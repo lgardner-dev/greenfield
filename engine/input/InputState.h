@@ -11,6 +11,7 @@ struct InputState
     bool leftMouseButtonDown{false};
     bool leftMouseButtonPressed{false};
     bool leftMouseButtonReleased{false};
+    float verticalScrollDelta{0.0f};
 };
 
 } // namespace greenfield

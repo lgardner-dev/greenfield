@@ -43,6 +43,21 @@ public:
         });
     }
 
+    void PushClip(const Rect& rectangle)
+    {
+        _commands.push_back(RenderCommand{
+            .type = RenderCommandType::PushClip,
+            .rectangle = rectangle,
+        });
+    }
+
+    void PopClip()
+    {
+        _commands.push_back(RenderCommand{
+            .type = RenderCommandType::PopClip,
+        });
+    }
+
     void Append(const RenderCommandList& other)
     {
         _commands.insert(_commands.end(), other._commands.begin(), other._commands.end());

@@ -77,6 +77,24 @@ private:
         std::uint32_t vertexCount{0};
     };
 
+    struct ScissorRectangle
+    {
+        std::uint32_t x{0};
+        std::uint32_t y{0};
+        std::uint32_t width{0};
+        std::uint32_t height{0};
+    };
+
+    struct DrawBatch
+    {
+        RenderCommandType type{RenderCommandType::FillRectangle};
+        bool hasClip{false};
+        Rect clipRectangle{};
+        wgpu::BindGroup bindGroup;
+        std::uint32_t firstVertex{0};
+        std::uint32_t vertexCount{0};
+    };
+
     void EnsureRectanglePipeline();
     void EnsureTextPipeline();
     [[nodiscard]] FontAtlas* GetOrCreateFontAtlas(float fontSize);
@@ -91,6 +109,16 @@ private:
     void EnsureTextVertexBuffer(std::size_t requiredSize);
     void DrawRectangles(wgpu::RenderPassEncoder& renderPass);
     void DrawText(wgpu::RenderPassEncoder& renderPass);
+    void DrawRenderCommands(wgpu::RenderPassEncoder& renderPass);
+    void BuildRenderBatches();
+    void AppendRectangleVertices(const RenderCommand& renderCommand);
+    void WritePreparedVertexBuffers();
+    void DrawPreparedBatch(wgpu::RenderPassEncoder& renderPass, const DrawBatch& drawBatch);
+    void DrawRectangleCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand);
+    void DrawTextCommand(wgpu::RenderPassEncoder& renderPass, const RenderCommand& renderCommand);
+    void ApplyFullFrameScissor(wgpu::RenderPassEncoder& renderPass) const;
+    void ApplyClipScissor(wgpu::RenderPassEncoder& renderPass, const Rect& clipRectangle) const;
+    [[nodiscard]] ScissorRectangle MakeScissorRectangle(const Rect& clipRectangle) const noexcept;
 
     WebGpuContext* _context{nullptr};
     RenderCommandList _submittedCommands;
@@ -105,6 +133,7 @@ private:
     std::vector<RectangleVertex> _rectangleVertices;
     std::vector<TextVertex> _textVertices;
     std::vector<TextBatch> _textBatches;
+    std::vector<DrawBatch> _drawBatches;
     std::unordered_map<int, FontAtlas> _fontAtlases;
     std::uint64_t _rectangleVertexBufferSize{0};
     std::uint64_t _textVertexBufferSize{0};

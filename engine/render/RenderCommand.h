@@ -12,6 +12,8 @@ enum class RenderCommandType
 {
     FillRectangle,
     DrawText,
+    PushClip,
+    PopClip,
 };
 
 struct RenderCommand
