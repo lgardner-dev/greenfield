@@ -17,6 +17,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
 - vcpkg manifest-mode as the default dependency path
+- Early M5 export/target vocabulary documentation, without app templates, install rules, packages, CLI behavior, or WASM implementation
 
 ## Direction
 
@@ -35,11 +36,43 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Greenfield CLI is future tooling, not part of current M4 renderer-selection work.
 - Development can be Linux-first for v0.1 work, while preserving Linux, Windows, and browser-hosted WebAssembly as v0.1 release/export architecture considerations.
 - Exported Greenfield apps should be C++/CMake-based first.
+- Exported apps are future app projects, not the sandbox copied as a product template.
+- `apps/sandbox` is the current demo and composition root. Future exported apps should consume SDK/runtime targets and provide their own composition-root policy.
+- A composition root may wire concrete host platform and renderer backend targets such as SDL, WebGPU, or Fast2D. Reusable SDK/UI/runtime/surface/export vocabulary should stay independent from SDL, Dawn/WebGPU, and FreeType.
 - Hot reload is not a core v0.1 requirement; fast incremental build UX matters more.
 
 ## Not In Scope Yet
 
 The current M4 renderer-selection work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, visible Fast2D platform presentation, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
+
+M5 export/target foundation work is currently documentation-only. It does not add app templates, generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
+
+## Current Build Shape
+
+The current CMake project defines reusable SDK/runtime-style targets and one sandbox executable:
+
+- `greenfield_core`: interface target for core value types.
+- `greenfield_render`: interface target for renderer-neutral render commands and renderer interfaces.
+- `greenfield_render_fast2d`: Fast2D diagnostic/headless renderer backend foundation.
+- `greenfield_ui`: UI context, layout, style, and widget basics.
+- `greenfield_platform`: interface target for platform abstractions.
+- `greenfield_sdl_platform`: SDL platform and startup presenter implementation.
+- `greenfield_render_webgpu`: Dawn/WebGPU renderer backend with backend-local FreeType text rendering.
+- `greenfield_webgpu`: compatibility alias for `greenfield_render_webgpu`.
+- `greenfield_sandbox`: demo executable in `apps/sandbox`.
+
+`greenfield_sandbox` links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu`. It is a demo composition root, so it may know about concrete SDL, WebGPU, and Fast2D targets while the reusable SDK layers remain independent of those concrete providers.
+
+The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `clean`, and `format`. The current CMake presets are `dev` and `release` for configure, build, and test flows. No app template, generated export project, install/package/export workflow, Windows-specific workflow, or WASM-specific workflow exists yet in this repository.
+
+## Export Vocabulary
+
+- Host platform: the environment and platform provider an app runs on, such as the current SDL desktop path or a future browser host.
+- Renderer backend choice: the app/composition-root policy that selects a renderer implementation, currently `webgpu` or `fast2d` in the sandbox.
+- App project: a future generated or hand-authored C++/CMake project that consumes Greenfield SDK/runtime targets.
+- App target: the executable or equivalent target produced by an app project.
+- Build/export target: the requested output platform or delivery direction for an app project, such as Linux desktop now and Windows or browser-hosted WebAssembly as future v0.1 considerations.
+- Browser-hosted WebAssembly: a future build/export target direction, not a current implementation in this repo.
 
 ## Build
 

@@ -12,6 +12,21 @@ Greenfield is organized around the Greenfield SDK: the reusable runtime and libr
 - Greenfield CLI is future tooling around the SDK.
 - Shared engine layers should stay product-neutral and reusable.
 - Composition roots, sample apps, and sandbox applications may wire concrete implementations together, but reusable SDK layers should not depend on those applications.
+- Exported apps are future C++/CMake-based app projects that consume SDK/runtime targets and provide their own composition-root policy.
+- Exported apps are not the current sandbox. `apps/sandbox` is a demo/composition root that proves how the current targets can be wired together.
+
+## M5 Export And Target Vocabulary
+
+The current repository has vocabulary for export and target planning, but it does not yet implement generated app projects, app templates, install rules, package rules, CLI export behavior, Windows-specific export workflows, or browser-hosted WebAssembly builds.
+
+- Host platform: the operating environment and platform provider an app runs on. The current interactive host path is SDL desktop through `greenfield_sdl_platform`.
+- Renderer backend choice: composition-root policy that selects a renderer implementation. The sandbox currently exposes `--renderer=webgpu` and `--renderer=fast2d`.
+- App project: a future generated or hand-authored C++/CMake project outside the sandbox that consumes Greenfield SDK/runtime targets.
+- App target: the executable or equivalent CMake target produced by an app project.
+- Build/export target: the requested output platform or delivery direction for an app project, such as Linux desktop today and Windows or browser-hosted WebAssembly as future v0.1 considerations.
+- Browser-hosted WebAssembly: a future target direction that should preserve SDK/UI/runtime boundaries. It is not implemented by the current build.
+
+Reusable SDK, UI, runtime, surface, and export vocabulary must not directly depend on SDL, Dawn/WebGPU, or FreeType. Concrete composition roots may wire platform and renderer backend targets together when they produce an app target.
 
 ## Layer Overview
 
@@ -138,6 +153,26 @@ The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`. The default `we
 
 Application code may know about concrete implementations because it is the composition root. Shared engine layers should not take dependencies back on the sandbox.
 
+`apps/sandbox` is not an exported app template. Future generated or exported apps should consume SDK/runtime targets, define their own app target, and choose their own composition-root policy for host platform and renderer backend wiring.
+
+## Current CMake Target Shape
+
+The top-level build currently defines these targets:
+
+- `greenfield_core`: interface target for core value types.
+- `greenfield_render`: interface target for renderer-neutral command and renderer interfaces.
+- `greenfield_render_fast2d`: Fast2D diagnostic/headless renderer backend foundation.
+- `greenfield_ui`: UI runtime target.
+- `greenfield_platform`: interface target for platform abstractions.
+- `greenfield_sdl_platform`: SDL platform and startup presenter target.
+- `greenfield_render_webgpu`: Dawn/WebGPU renderer backend target with backend-local FreeType usage.
+- `greenfield_webgpu`: compatibility alias for `greenfield_render_webgpu`.
+- `greenfield_sandbox`: demo executable.
+
+The sandbox app target links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu`. This is acceptable because the sandbox is the composition root. That wiring should not move into renderer-neutral commands, UI widgets, platform interfaces, SDK surface vocabulary, or future export vocabulary.
+
+Tests currently cover core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, and dependency boundaries. The dependency boundary test guards reusable SDK-facing files from direct SDL, Dawn/WebGPU, and FreeType includes.
+
 ## Dependency Direction
 
 Dependencies should point from higher-level composition and features toward narrow abstractions and value types.
@@ -193,6 +228,8 @@ Renderer backend policy follows the same rule. A composition root such as `apps/
 v0.1 development can be Linux-first, but release and export awareness should preserve Linux, Windows, and browser-hosted WebAssembly targets.
 
 Future platform targets should add providers or backends rather than leaking platform APIs into UI or renderer-neutral layers. The boundary should stay on abstractions, not on concrete platform SDKs.
+
+Windows and browser-hosted WebAssembly are export considerations for v0.1, not completed export implementations in the current repository. Browser-hosted WebAssembly should be approached as a future host platform and build/export target direction, with browser-specific providers or backends added behind the same boundaries.
 
 ## Surface Direction
 
