@@ -57,19 +57,20 @@ target_include_directories(greenfield_sdl_platform PUBLIC "${PROJECT_SOURCE_DIR}
 target_link_libraries(greenfield_sdl_platform PUBLIC greenfield_platform "${GREENFIELD_SDL3_TARGET}")
 greenfield_enable_warnings(greenfield_sdl_platform)
 
-add_library(greenfield_webgpu
+add_library(greenfield_render_webgpu
     engine/render/webgpu/WebGpuContext.cpp
     engine/render/webgpu/WebGpuRenderer.cpp
 )
-target_include_directories(greenfield_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
-greenfield_enable_warnings(greenfield_webgpu)
+add_library(greenfield_webgpu ALIAS greenfield_render_webgpu)
+target_include_directories(greenfield_render_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
+target_link_libraries(greenfield_render_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
+greenfield_enable_warnings(greenfield_render_webgpu)
 
 add_executable(greenfield_sandbox
     apps/sandbox/main.cpp
 )
 target_include_directories(greenfield_sandbox PRIVATE "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform greenfield_webgpu)
+target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform greenfield_render_webgpu)
 greenfield_enable_warnings(greenfield_sandbox)
 
 if(BUILD_TESTING)
