@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "engine/platform/INativeSurfaceProvider.h"
 #include "engine/platform/IWindow.h"
 
 struct SDL_Window;
@@ -15,7 +16,7 @@ struct SdlWindowDeleter
     void operator()(SDL_Window* window) const noexcept;
 };
 
-class SdlWindow final : public IWindow
+class SdlWindow final : public IWindow, public INativeSurfaceProvider
 {
 public:
     SdlWindow(std::string title, int width, int height);
@@ -31,6 +32,9 @@ public:
     [[nodiscard]] int GetWidth() const noexcept override;
     [[nodiscard]] int GetHeight() const noexcept override;
     [[nodiscard]] const InputState& GetInputState() const noexcept override;
+    [[nodiscard]] int GetSurfacePixelWidth() const noexcept override;
+    [[nodiscard]] int GetSurfacePixelHeight() const noexcept override;
+    [[nodiscard]] NativeSurfaceDescriptor GetNativeSurfaceDescriptor() const override;
     [[nodiscard]] SDL_Window* GetNativeWindow() const noexcept;
 
 private:

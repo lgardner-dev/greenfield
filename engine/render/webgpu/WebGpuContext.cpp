@@ -5,11 +5,7 @@
 #include <string>
 #include <string_view>
 
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_properties.h>
-#include <SDL3/SDL_video.h>
-
-#include "engine/platform/SdlWindow.h"
+#include "engine/platform/INativeSurfaceProvider.h"
 
 namespace greenfield
 {
@@ -65,8 +61,8 @@ struct DeviceRequestResult
 
 } // namespace
 
-WebGpuContext::WebGpuContext(SdlWindow& window)
-    : _window(&window)
+WebGpuContext::WebGpuContext(INativeSurfaceProvider& surfaceProvider)
+    : _surfaceProvider(&surfaceProvider)
 {
     CreateInstance();
     CreateSurface();
@@ -83,7 +79,7 @@ WebGpuContext::~WebGpuContext()
 
 bool WebGpuContext::IsInitialized() const noexcept
 {
-    return _initialized && _window != nullptr && _device != nullptr && _queue != nullptr && _surface != nullptr;
+    return _initialized && _surfaceProvider != nullptr && _device != nullptr && _queue != nullptr && _surface != nullptr;
 }
 
 wgpu::Device WebGpuContext::GetDevice() const noexcept
@@ -118,14 +114,15 @@ std::uint32_t WebGpuContext::GetSurfaceHeight() const noexcept
 
 void WebGpuContext::ReconfigureIfNeeded()
 {
-    const auto width = static_cast<std::uint32_t>(_window->GetWidth());
-    const auto height = static_cast<std::uint32_t>(_window->GetHeight());
-
-    if (width == 0 || height == 0)
+    const int surfacePixelWidth = _surfaceProvider->GetSurfacePixelWidth();
+    const int surfacePixelHeight = _surfaceProvider->GetSurfacePixelHeight();
+    if (surfacePixelWidth <= 0 || surfacePixelHeight <= 0)
     {
         return;
     }
 
+    const auto width = static_cast<std::uint32_t>(surfacePixelWidth);
+    const auto height = static_cast<std::uint32_t>(surfacePixelHeight);
     if (width == _surfaceWidth && height == _surfaceHeight)
     {
         return;
@@ -149,16 +146,10 @@ void WebGpuContext::CreateInstance()
 
 void WebGpuContext::CreateSurface()
 {
-    ThrowIfFalse(_window != nullptr && _window->GetNativeWindow() != nullptr, "Cannot create WebGPU surface without an SDL window.");
+    ThrowIfFalse(_surfaceProvider != nullptr, "Cannot create WebGPU surface without a native surface provider.");
 
-    _surface = CreateWaylandSurface();
-    if (_surface != nullptr)
-    {
-        return;
-    }
-
-    _surface = CreateX11Surface();
-    ThrowIfFalse(_surface != nullptr, "Failed to create WebGPU surface from SDL window properties.");
+    _surface = CreateSurfaceFromDescriptor(_surfaceProvider->GetNativeSurfaceDescriptor());
+    ThrowIfFalse(_surface != nullptr, "Failed to create WebGPU surface from native surface properties.");
 }
 
 void WebGpuContext::RequestAdapter()
@@ -227,7 +218,7 @@ void WebGpuContext::ReleaseResources() noexcept
     _device = nullptr;
     _adapter = nullptr;
     _instance = nullptr;
-    _window = nullptr;
+    _surfaceProvider = nullptr;
     _surfaceWidth = 0;
     _surfaceHeight = 0;
     _surfaceFormat = wgpu::TextureFormat::Undefined;
@@ -258,21 +249,28 @@ void WebGpuContext::ConfigureSurface(std::uint32_t width, std::uint32_t height)
     _surface.Configure(&configuration);
 }
 
-wgpu::Surface WebGpuContext::CreateWaylandSurface() const
+wgpu::Surface WebGpuContext::CreateSurfaceFromDescriptor(const NativeSurfaceDescriptor& nativeSurface) const
 {
-    SDL_PropertiesID properties = SDL_GetWindowProperties(_window->GetNativeWindow());
-    ThrowIfFalse(properties != 0, "Failed to read SDL window properties: " + std::string(SDL_GetError()));
-
-    void* waylandDisplay = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
-    void* waylandSurface = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
-    if (waylandDisplay == nullptr || waylandSurface == nullptr)
+    if (nativeSurface.kind == NativeSurfaceKind::Wayland)
     {
-        return {};
+        return CreateWaylandSurface(nativeSurface);
     }
 
+    if (nativeSurface.kind == NativeSurfaceKind::X11)
+    {
+        return CreateX11Surface(nativeSurface);
+    }
+
+    return {};
+}
+
+wgpu::Surface WebGpuContext::CreateWaylandSurface(const NativeSurfaceDescriptor& nativeSurface) const
+{
+    ThrowIfFalse(nativeSurface.display != nullptr && nativeSurface.surface != nullptr, "Cannot create a Wayland WebGPU surface without display and surface handles.");
+
     wgpu::SurfaceSourceWaylandSurface source{};
-    source.display = waylandDisplay;
-    source.surface = waylandSurface;
+    source.display = nativeSurface.display;
+    source.surface = nativeSurface.surface;
 
     const wgpu::SurfaceDescriptor descriptor{
         .nextInChain = &source,
@@ -281,21 +279,13 @@ wgpu::Surface WebGpuContext::CreateWaylandSurface() const
     return _instance.CreateSurface(&descriptor);
 }
 
-wgpu::Surface WebGpuContext::CreateX11Surface() const
+wgpu::Surface WebGpuContext::CreateX11Surface(const NativeSurfaceDescriptor& nativeSurface) const
 {
-    SDL_PropertiesID properties = SDL_GetWindowProperties(_window->GetNativeWindow());
-    ThrowIfFalse(properties != 0, "Failed to read SDL window properties: " + std::string(SDL_GetError()));
-
-    void* x11Display = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
-    const Sint64 x11Window = SDL_GetNumberProperty(properties, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
-    if (x11Display == nullptr || x11Window == 0)
-    {
-        return {};
-    }
+    ThrowIfFalse(nativeSurface.display != nullptr && nativeSurface.window != 0, "Cannot create an X11 WebGPU surface without display and window handles.");
 
     wgpu::SurfaceSourceXlibWindow source{};
-    source.display = x11Display;
-    source.window = static_cast<std::uint64_t>(x11Window);
+    source.display = nativeSurface.display;
+    source.window = nativeSurface.window;
 
     const wgpu::SurfaceDescriptor descriptor{
         .nextInChain = &source,

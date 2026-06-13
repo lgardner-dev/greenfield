@@ -45,13 +45,17 @@ target_include_directories(greenfield_ui PUBLIC "${PROJECT_SOURCE_DIR}")
 target_link_libraries(greenfield_ui PUBLIC greenfield_core greenfield_render)
 greenfield_enable_warnings(greenfield_ui)
 
-add_library(greenfield_platform
+add_library(greenfield_platform INTERFACE)
+target_include_directories(greenfield_platform INTERFACE "${PROJECT_SOURCE_DIR}")
+target_link_libraries(greenfield_platform INTERFACE greenfield_core)
+
+add_library(greenfield_sdl_platform
     engine/platform/SdlStartupPresenter.cpp
     engine/platform/SdlWindow.cpp
 )
-target_include_directories(greenfield_platform PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_platform PUBLIC greenfield_core "${GREENFIELD_SDL3_TARGET}")
-greenfield_enable_warnings(greenfield_platform)
+target_include_directories(greenfield_sdl_platform PUBLIC "${PROJECT_SOURCE_DIR}")
+target_link_libraries(greenfield_sdl_platform PUBLIC greenfield_platform "${GREENFIELD_SDL3_TARGET}")
+greenfield_enable_warnings(greenfield_sdl_platform)
 
 add_library(greenfield_webgpu
     engine/render/webgpu/WebGpuContext.cpp
@@ -65,16 +69,22 @@ add_executable(greenfield_sandbox
     apps/sandbox/main.cpp
 )
 target_include_directories(greenfield_sandbox PRIVATE "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_platform greenfield_webgpu)
+target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform greenfield_webgpu)
 greenfield_enable_warnings(greenfield_sandbox)
 
 if(BUILD_TESTING)
-    add_executable(greenfield_core_smoke
-        tests/core_smoke.cpp
-    )
-    target_include_directories(greenfield_core_smoke PRIVATE "${PROJECT_SOURCE_DIR}")
-    target_link_libraries(greenfield_core_smoke PRIVATE greenfield_core greenfield_render greenfield_ui)
-    greenfield_enable_warnings(greenfield_core_smoke)
+    function(greenfield_add_test test_name source_file)
+        add_executable(${test_name}
+            ${source_file}
+        )
+        target_include_directories(${test_name} PRIVATE "${PROJECT_SOURCE_DIR}")
+        target_link_libraries(${test_name} PRIVATE greenfield_core greenfield_render greenfield_ui)
+        greenfield_enable_warnings(${test_name})
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endfunction()
 
-    add_test(NAME greenfield_core_smoke COMMAND greenfield_core_smoke)
+    greenfield_add_test(greenfield_core_tests tests/core_tests.cpp)
+    greenfield_add_test(greenfield_render_command_tests tests/render_command_tests.cpp)
+    greenfield_add_test(greenfield_layout_tests tests/layout_tests.cpp)
+    greenfield_add_test(greenfield_ui_tests tests/ui_tests.cpp)
 endif()

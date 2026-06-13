@@ -5,6 +5,8 @@
 #include <utility>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_properties.h>
+#include <SDL3/SDL_video.h>
 
 namespace greenfield
 {
@@ -129,6 +131,49 @@ int SdlWindow::GetHeight() const noexcept
 const InputState& SdlWindow::GetInputState() const noexcept
 {
     return _inputState;
+}
+
+int SdlWindow::GetSurfacePixelWidth() const noexcept
+{
+    return _width;
+}
+
+int SdlWindow::GetSurfacePixelHeight() const noexcept
+{
+    return _height;
+}
+
+NativeSurfaceDescriptor SdlWindow::GetNativeSurfaceDescriptor() const
+{
+    SDL_PropertiesID properties = SDL_GetWindowProperties(_window.get());
+    if (properties == 0)
+    {
+        throw std::runtime_error("Failed to read SDL window properties: " + std::string(SDL_GetError()));
+    }
+
+    void* waylandDisplay = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
+    void* waylandSurface = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
+    if (waylandDisplay != nullptr && waylandSurface != nullptr)
+    {
+        return NativeSurfaceDescriptor{
+            .kind = NativeSurfaceKind::Wayland,
+            .display = waylandDisplay,
+            .surface = waylandSurface,
+        };
+    }
+
+    void* x11Display = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
+    const Sint64 x11Window = SDL_GetNumberProperty(properties, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+    if (x11Display != nullptr && x11Window != 0)
+    {
+        return NativeSurfaceDescriptor{
+            .kind = NativeSurfaceKind::X11,
+            .display = x11Display,
+            .window = static_cast<std::uint64_t>(x11Window),
+        };
+    }
+
+    return NativeSurfaceDescriptor{};
 }
 
 SDL_Window* SdlWindow::GetNativeWindow() const noexcept

@@ -7,12 +7,13 @@
 namespace greenfield
 {
 
-class SdlWindow;
+class INativeSurfaceProvider;
+struct NativeSurfaceDescriptor;
 
 class WebGpuContext
 {
 public:
-    explicit WebGpuContext(SdlWindow& window);
+    explicit WebGpuContext(INativeSurfaceProvider& surfaceProvider);
     ~WebGpuContext();
 
     WebGpuContext(const WebGpuContext&) = delete;
@@ -38,10 +39,11 @@ private:
     void ConfigureSurface(std::uint32_t width, std::uint32_t height);
     void ReleaseResources() noexcept;
 
-    [[nodiscard]] wgpu::Surface CreateWaylandSurface() const;
-    [[nodiscard]] wgpu::Surface CreateX11Surface() const;
+    [[nodiscard]] wgpu::Surface CreateSurfaceFromDescriptor(const NativeSurfaceDescriptor& nativeSurface) const;
+    [[nodiscard]] wgpu::Surface CreateWaylandSurface(const NativeSurfaceDescriptor& nativeSurface) const;
+    [[nodiscard]] wgpu::Surface CreateX11Surface(const NativeSurfaceDescriptor& nativeSurface) const;
 
-    SdlWindow* _window{nullptr};
+    INativeSurfaceProvider* _surfaceProvider{nullptr};
     wgpu::Instance _instance;
     wgpu::Surface _surface;
     wgpu::Adapter _adapter;
