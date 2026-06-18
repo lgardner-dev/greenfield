@@ -301,7 +301,10 @@ void Fast2DRenderer::ConsumeFillRectangle(const RenderCommand& renderCommand)
 
 void Fast2DRenderer::ConsumePushClip(const RenderCommand& renderCommand)
 {
-    _clipStack.push_back(renderCommand.rectangle);
+    const Rect clipRectangle = _clipStack.empty()
+                                   ? renderCommand.rectangle
+                                   : IntersectRectangles(_clipStack.back(), renderCommand.rectangle);
+    _clipStack.push_back(clipRectangle);
 }
 
 void Fast2DRenderer::ConsumePopClip()

@@ -121,6 +121,7 @@ namespace
 
     const Rect firstClip{.position = Vec2{1.0f, 2.0f}, .size = Vec2{30.0f, 40.0f}};
     const Rect secondClip{.position = Vec2{5.0f, 6.0f}, .size = Vec2{10.0f, 12.0f}};
+    const Rect nestedClipIntersection = IntersectRectangles(firstClip, secondClip);
 
     Fast2DRenderer renderer;
     RenderCommandList renderCommands;
@@ -138,7 +139,7 @@ namespace
     const auto fillOperations = renderer.PreparedFillOperations();
     return renderer.PreparedFillOperationCount() == 4U && fillOperations[0].hasClip &&
            RectanglesMatch(fillOperations[0].clipRectangle, firstClip) && fillOperations[1].hasClip &&
-           RectanglesMatch(fillOperations[1].clipRectangle, secondClip) && fillOperations[2].hasClip &&
+           RectanglesMatch(fillOperations[1].clipRectangle, nestedClipIntersection) && fillOperations[2].hasClip &&
            RectanglesMatch(fillOperations[2].clipRectangle, firstClip) && !fillOperations[3].hasClip;
 }
 
@@ -672,6 +673,121 @@ namespace
            PixelMatches(renderer, 2U, 4U, Color{});
 }
 
+[[nodiscard]] bool TestNestedOverlappingClipsLimitRasterPixelsToIntersection()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.2f, 0.8f, 0.3f, 1.0f};
+    Fast2DRenderer renderer{6U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.PushClip(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{4.0f, 4.0f}});
+    renderCommands.PushClip(Rect{.position = Vec2{3.0f, 0.0f}, .size = Vec2{4.0f, 3.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{6.0f, 5.0f}}, fillColor);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 3U, 1U, fillColor) && PixelMatches(renderer, 4U, 2U, fillColor) &&
+           PixelMatches(renderer, 2U, 1U, Color{}) && PixelMatches(renderer, 3U, 0U, Color{}) &&
+           PixelMatches(renderer, 5U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestNonOverlappingNestedClipsModifyNoRasterPixels()
+{
+    using namespace greenfield;
+
+    const Color destinationColor{0.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 3.0f}},
+                                    destinationColor);
+    renderCommands.PushClip(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{2.0f, 3.0f}});
+    renderCommands.PushClip(Rect{.position = Vec2{3.0f, 0.0f}, .size = Vec2{2.0f, 3.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 3.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 1.0f});
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 1U, destinationColor) &&
+           PixelMatches(renderer, 1U, 1U, destinationColor) &&
+           PixelMatches(renderer, 3U, 1U, destinationColor) &&
+           PixelMatches(renderer, 4U, 1U, destinationColor);
+}
+
+[[nodiscard]] bool TestNestedClipsLimitAlphaBlendedFillToIntersection()
+{
+    using namespace greenfield;
+
+    const Color destinationColor{0.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 4U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 4.0f}},
+                                    destinationColor);
+    renderCommands.PushClip(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{3.0f, 3.0f}});
+    renderCommands.PushClip(Rect{.position = Vec2{2.0f, 0.0f}, .size = Vec2{3.0f, 2.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 4.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 0.5f});
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 2U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
+           PixelNearlyMatches(renderer, 3U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
+           PixelMatches(renderer, 1U, 1U, destinationColor) &&
+           PixelMatches(renderer, 2U, 2U, destinationColor);
+}
+
+[[nodiscard]] bool TestNestedClipsLimitBorderRasterizationToIntersection()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color borderColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.PushClip(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 2.0f}});
+    renderCommands.PushClip(Rect{.position = Vec2{2.0f, 0.0f}, .size = Vec2{3.0f, 5.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    fillColor,
+                                    0.0f,
+                                    borderColor,
+                                    1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 0U, borderColor) && PixelMatches(renderer, 4U, 1U, borderColor) &&
+           PixelMatches(renderer, 2U, 1U, fillColor) && PixelMatches(renderer, 1U, 0U, Color{}) &&
+           PixelMatches(renderer, 3U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestNestedClipsLimitRoundedFillRasterizationToIntersection()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.2f, 0.7f, 0.9f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.PushClip(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{3.0f, 3.0f}});
+    renderCommands.PushClip(Rect{.position = Vec2{2.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    fillColor,
+                                    2.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 1U, fillColor) && PixelMatches(renderer, 3U, 2U, fillColor) &&
+           PixelMatches(renderer, 1U, 1U, Color{}) && PixelMatches(renderer, 2U, 3U, Color{}) &&
+           PixelMatches(renderer, 4U, 2U, Color{});
+}
+
 [[nodiscard]] bool TestPopClipRestoresPreviousRasterClip()
 {
     using namespace greenfield;
@@ -789,13 +905,18 @@ int main()
         !TestLargeCornerRadiusOnSmallRectangleIsDeterministic() ||
         !TestRoundedFillWithBorderKeepsHardEdgedBorder() ||
         !TestLaterFillRectangleOverridesEarlierRasterPixels() || !TestClipLimitsRasterPixels() ||
+        !TestNestedOverlappingClipsLimitRasterPixelsToIntersection() ||
+        !TestNonOverlappingNestedClipsModifyNoRasterPixels() ||
         !TestOpaqueFillStillReplacesRasterPixels() || !TestTransparentFillLeavesRasterPixelsUnchanged() ||
         !TestPartialAlphaFillBlendsOverOpaqueDestination() ||
         !TestPartialAlphaFillBlendsAgainstExistingRasterPixels() ||
+        !TestNestedClipsLimitAlphaBlendedFillToIntersection() ||
         !TestAlphaBlendedFillStillHonorsClip() || !TestZeroBorderThicknessPreservesFillOnlyRasterPath() ||
         !TestNegativeBorderThicknessPreservesFillOnlyRasterPath() || !TestBorderDrawsAfterFill() ||
         !TestTransparentBorderLeavesFillUnchanged() || !TestPartialAlphaBorderBlendsOverFill() ||
         !TestBorderRespectsClip() || !TestLargeBorderThicknessCoversSmallRectangleDeterministically() ||
+        !TestNestedClipsLimitBorderRasterizationToIntersection() ||
+        !TestNestedClipsLimitRoundedFillRasterizationToIntersection() ||
         !TestPopClipRestoresPreviousRasterClip() ||
         !TestOutOfBoundsRectanglesAreClippedToRasterTarget() ||
         !TestClipOutsideRasterTargetIsClippedSafely() || !TestDrawTextDoesNotAlterRasterPixels() ||
