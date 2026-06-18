@@ -72,6 +72,18 @@ Checkbox and Toggle state is independent for different `UiId`s. Matching names i
 
 M6B does not add sliders, tabs, dropdowns, modals, toasts, tooltips, keyboard navigation, text entry, IME, clipboard, selection, accessibility, modal focus traps, a retained UI tree, a full event dispatch system, compositor work, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
+## M6C
+
+M6C is the first continuous/numeric stateful control foundation.
+
+Current M6C work adds private `UiId`-keyed numeric state in `UiContext` and a horizontal immediate-mode Slider control. Slider values persist across frames by `UiId`, return `true` only when the current frame changes the value, use active-control capture and per-frame mouse press/release consumption, support click-to-set and drag-while-captured behavior, clamp values, and safely handle reversed or degenerate ranges.
+
+Slider emits renderer-neutral track, fill, thumb, and label commands through `RenderCommandList`. It does not call SDL, Dawn/WebGPU, FreeType, or renderer APIs. Existing Button, Checkbox, Toggle/Switch, scroll panel, layout, clipping, render command, renderer selection, Fast2D diagnostic, and WebGPU sandbox behavior are preserved.
+
+The existing Control Room sandbox includes one small Slider example for manual visual verification. A local screenshot capture workflow has been proven during development, but screenshots are not committed project artifacts and are not part of normal automated test validation.
+
+M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toasts, tooltips, accessibility, a retained UI tree, a full event dispatch system, a broad controls library, compositor work, mixed-surface composition, Canvas2D, Scene3D, shader tools, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared text/font service, Skia, Python bindings, or hot reload.
+
 ## v0.1 Direction
 
 - C++20-first authoring.
@@ -119,4 +131,4 @@ M6B does not add sliders, tabs, dropdowns, modals, toasts, tooltips, keyboard na
 - Windows-specific export workflow implementation
 - Keyboard navigation, text input, IME, clipboard, selection, and accessibility
 - Retained UI tree or full UI event dispatch system
-- Broad product-quality UI control set beyond the current Checkbox and Toggle/Switch foundation
+- Broad product-quality UI control set beyond the current Checkbox, Toggle/Switch, and Slider foundation

@@ -128,7 +128,7 @@ Fast2D must stay free of SDL, Dawn/WebGPU, and FreeType includes. Dependency bou
 
 ### `engine/ui`
 
-UI contains the immediate-mode UI context, renderer-neutral UI identity, layout helpers, styles, buttons, panels, text helpers, and scroll panels.
+UI contains the immediate-mode UI context, renderer-neutral UI identity, layout helpers, styles, buttons, panels, text helpers, scroll panels, and the current narrow stateful controls.
 
 The UI layer depends on:
 
@@ -148,7 +148,7 @@ M6A added product-quality runtime groundwork inside this immediate UI model:
 - Active-control state is generalized as capture state instead of button-specific state. Buttons use it to keep a press/release gesture tied to the initiating control across frames.
 - Per-frame mouse press/release consumption prevents later overlapping buttons from claiming the same gesture while preserving existing immediate button calls.
 
-M6B establishes the first stateful control foundation inside the same immediate UI model:
+M6B establishes the first boolean stateful control foundation inside the same immediate UI model:
 
 - Checkbox already existed and was audited as complete enough for M6B.
 - Toggle/Switch was added as a new immediate-mode stateful control.
@@ -158,7 +158,19 @@ M6B establishes the first stateful control foundation inside the same immediate 
 - Both controls use the existing active-control capture and per-frame mouse press/release consumption behavior.
 - Both controls emit renderer-neutral fill and text commands through `RenderCommandList`; they do not call SDL, Dawn/WebGPU, FreeType, or renderer APIs.
 
-This foundation is UI runtime and first-stateful-control groundwork, not a retained-mode system or broad controls milestone. It does not add sliders, tabs, dropdowns, modals, toasts, tooltips, keyboard input, text input, IME, clipboard, selection, accessibility, modal focus traps, a retained UI tree, full event dispatch system, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
+M6C establishes the first continuous/numeric stateful control foundation:
+
+- `UiContext` now has private `UiId`-keyed numeric state alongside its boolean state. This numeric state remains internal to the UI runtime and is not exposed as a public app-facing get/set API.
+- Slider was added as a horizontal immediate-mode control. It uses the same `UiId` identity model as the other stateful controls, so values persist across frames by control identity and remain independent for different names.
+- Slider returns `true` only when the current frame changes its value.
+- Slider uses the existing active-control capture and per-frame mouse press/release consumption behavior.
+- Slider supports click-to-set and drag-while-captured behavior using the current platform-neutral `InputState`.
+- Slider clamps values into its effective range and safely handles reversed or degenerate ranges.
+- Slider emits renderer-neutral track, fill, thumb, and label commands through `RenderCommandList`; it does not call SDL, Dawn/WebGPU, FreeType, or renderer APIs.
+
+The sandbox includes one small Slider example in the existing Control Room UI for manual visual verification. A local screenshot capture workflow has been proven useful during development, but screenshots are not committed project artifacts and are not required automated test outputs.
+
+This foundation is UI runtime and first numeric-control groundwork, not a retained-mode system or broad controls milestone. It does not add tabs, dropdowns, modals, toasts, tooltips, keyboard input, text input, IME, clipboard, selection, accessibility, modal focus traps, a retained UI tree, full event dispatch system, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ### `apps/sandbox`
 
