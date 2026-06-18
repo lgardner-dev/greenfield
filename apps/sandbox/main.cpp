@@ -288,7 +288,15 @@ void DrawNavigationRail(UiContext& uiContext, const Rect& bounds, DashboardState
     DrawText(uiContext, "GF", bounds.position.x + 28.0f, bounds.position.y + 22.0f, 60.0f, 28.0f, 24.0f, TextPrimaryColor);
     DrawText(uiContext, "Sandbox", bounds.position.x + 25.0f, bounds.position.y + 56.0f, 90.0f, 20.0f, 13.0f, MutedTextColor);
 
-    float buttonTop = bounds.position.y + 112.0f;
+    const Rect autoReviewBounds = MakeRectangle(bounds.position.x + 14.0f, bounds.position.y + 94.0f, bounds.size.x - 28.0f, 32.0f);
+    const bool autoReviewChanged = uiContext.Checkbox("navigation-auto-review", "Auto Review", autoReviewBounds);
+    (void)autoReviewChanged;
+
+    const Rect liveSyncBounds = MakeRectangle(bounds.position.x + 14.0f, autoReviewBounds.position.y + 42.0f, bounds.size.x - 28.0f, 32.0f);
+    const bool liveSyncChanged = uiContext.Toggle("navigation-live-sync", "Live Sync", liveSyncBounds);
+    (void)liveSyncChanged;
+
+    float buttonTop = bounds.position.y + 194.0f;
     for (std::size_t index = 0; index < NavigationItems.size(); ++index)
     {
         const bool isSelected = dashboardState.selectedNavigationIndex == static_cast<int>(index);
