@@ -1180,6 +1180,280 @@ namespace
            commands.Commands()[2].text == "Render toggle";
 }
 
+[[nodiscard]] bool TestSliderDefaultsToMinimumValue()
+{
+    using namespace greenfield;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    if (uiContext.Slider("default-slider", sliderBounds, 2.0f, 10.0f))
+    {
+        return false;
+    }
+
+    const auto& commands = uiContext.EndFrame();
+    return commands.Size() == 4U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("default-slider"), 0.0f) == 2.0f;
+}
+
+[[nodiscard]] bool TestSliderValuePersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("persistent-slider"), 6.0f);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Slider("persistent-slider", sliderBounds, 0.0f, 10.0f);
+    const auto& firstCommands = uiContext.EndFrame();
+    if (changed || firstCommands.Size() != 4U ||
+        UiContextTestAccess::GetNumericState(uiContext, MakeUiId("persistent-slider"), 0.0f) != 6.0f)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool secondFrameChanged = uiContext.Slider("persistent-slider", sliderBounds, 0.0f, 10.0f);
+    const auto& secondCommands = uiContext.EndFrame();
+    return !secondFrameChanged && secondCommands.Size() == 4U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("persistent-slider"), 0.0f) == 6.0f;
+}
+
+[[nodiscard]] bool TestSliderClickChangesValueOnlyOnChangedFrame()
+{
+    using namespace greenfield;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{70.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    const bool changedOnPress = uiContext.Slider("click-slider", sliderBounds, 0.0f, 10.0f);
+    const auto& pressCommands = uiContext.EndFrame();
+    if (!changedOnPress || pressCommands.Size() != 4U ||
+        UiContextTestAccess::GetNumericState(uiContext, MakeUiId("click-slider"), 0.0f) != 5.0f)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{70.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool changedOnRelease = uiContext.Slider("click-slider", sliderBounds, 0.0f, 10.0f);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return !changedOnRelease && releaseCommands.Size() == 4U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("click-slider"), 0.0f) == 5.0f;
+}
+
+[[nodiscard]] bool TestSliderClampsClickAfterTrackToMaximum()
+{
+    using namespace greenfield;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{220.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{180.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    const bool changed = uiContext.Slider("clamped-slider", sliderBounds, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 4U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("clamped-slider"), 0.0f) == 10.0f;
+}
+
+[[nodiscard]] bool TestSliderHandlesReversedAndDegenerateRanges()
+{
+    using namespace greenfield;
+
+    const Rect firstSliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+    const Rect secondSliderBounds{
+        .position = Vec2{10.0f, 64.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    const bool reversedChanged = uiContext.Slider("reversed-slider", firstSliderBounds, 10.0f, 0.0f);
+    const bool degenerateChanged = uiContext.Slider("degenerate-slider", secondSliderBounds, 3.0f, 3.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !reversedChanged && !degenerateChanged && commands.Size() == 8U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("reversed-slider"), 5.0f) == 0.0f &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("degenerate-slider"), 0.0f) == 3.0f;
+}
+
+[[nodiscard]] bool TestSliderStateIsIndependentPerUiId()
+{
+    using namespace greenfield;
+
+    const Rect firstSliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+    const Rect secondSliderBounds{
+        .position = Vec2{10.0f, 64.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("first-slider"), 0.25f);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool firstChanged = uiContext.Slider("first-slider", firstSliderBounds, 0.0f, 1.0f);
+    const bool secondChanged = uiContext.Slider("second-slider", secondSliderBounds, 0.0f, 1.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !firstChanged && !secondChanged && commands.Size() == 8U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("first-slider"), 0.0f) == 0.25f &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("second-slider"), 0.5f) == 0.0f;
+}
+
+[[nodiscard]] bool TestLayoutSliderAdvancesLayout()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{240.0f, 120.0f}},
+        .padding = 10.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{180.0f, 40.0f},
+    });
+    const bool changed = uiContext.Slider("layout-slider", 0.0f, 1.0f);
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 5U &&
+           RectanglesMatch(commands.Commands()[4].rectangle,
+                           Rect{.position = Vec2{10.0f, 56.0f}, .size = Vec2{180.0f, 40.0f}});
+}
+
+[[nodiscard]] bool TestExplicitBoundsSliderDoesNotAdvanceLayout()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{240.0f, 120.0f}},
+        .padding = 10.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{120.0f, 40.0f},
+    });
+    const bool changed =
+        uiContext.Slider("explicit-slider",
+                         Rect{.position = Vec2{30.0f, 70.0f}, .size = Vec2{180.0f, 32.0f}},
+                         0.0f,
+                         1.0f);
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 5U &&
+           RectanglesMatch(commands.Commands()[4].rectangle,
+                           Rect{.position = Vec2{10.0f, 10.0f}, .size = Vec2{120.0f, 40.0f}});
+}
+
+[[nodiscard]] bool TestSliderRenderCommandsIncludeTrackFillThumbAndLabel()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("render-slider"), 0.5f);
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Slider("render-slider", "Render slider", sliderBounds, 0.0f, 1.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 4U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[2].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[3].type == RenderCommandType::DrawText &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{10.0f, 34.0f}, .size = Vec2{120.0f, 8.0f}}) &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{10.0f, 34.0f}, .size = Vec2{60.0f, 8.0f}}) &&
+           RectanglesMatch(commands.Commands()[2].rectangle,
+                           Rect{.position = Vec2{63.0f, 27.0f}, .size = Vec2{14.0f, 22.0f}}) &&
+           commands.Commands()[3].text == "Render slider";
+}
+
+[[nodiscard]] bool TestSliderDragUpdatesWhileCaptured()
+{
+    using namespace greenfield;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{10.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    const bool changedOnPress = uiContext.Slider("drag-slider", sliderBounds, 0.0f, 1.0f);
+    const auto& pressCommands = uiContext.EndFrame();
+    if (changedOnPress || pressCommands.Size() != 4U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{130.0f, 30.0f}, .leftMouseButtonDown = true});
+    const bool changedOnDrag = uiContext.Slider("drag-slider", sliderBounds, 0.0f, 1.0f);
+    const auto& dragCommands = uiContext.EndFrame();
+
+    return changedOnDrag && dragCommands.Size() == 4U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("drag-slider"), 0.0f) == 1.0f;
+}
+
+[[nodiscard]] bool TestOverlappingSliderAndButtonConsumeOneGesture()
+{
+    using namespace greenfield;
+
+    const Rect overlappingBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{70.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    const bool sliderChanged = uiContext.Slider("overlap-slider", overlappingBounds, 0.0f, 1.0f);
+    const bool buttonClickedOnPress = uiContext.Button("overlap-button-with-slider", overlappingBounds);
+    const auto& pressCommands = uiContext.EndFrame();
+    if (!sliderChanged || buttonClickedOnPress || pressCommands.Size() != 6U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{70.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool sliderChangedOnRelease = uiContext.Slider("overlap-slider", overlappingBounds, 0.0f, 1.0f);
+    const bool buttonClickedOnRelease = uiContext.Button("overlap-button-with-slider", overlappingBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return !sliderChangedOnRelease && !buttonClickedOnRelease && releaseCommands.Size() == 6U;
+}
+
 [[nodiscard]] bool TestFocusDefaultsToEmpty()
 {
     using namespace greenfield;
@@ -1441,7 +1715,15 @@ int main()
         !TestOverlappingToggleAndCheckboxConsumeOneGesture() ||
         !TestOverlappingTogglesConsumeOneGesture() || !TestLayoutToggleAdvancesLayout() ||
         !TestExplicitBoundsToggleDoesNotAdvanceLayout() ||
-        !TestToggleRenderCommandsIncludeTrackKnobAndLabel() || !TestFocusDefaultsToEmpty() ||
+        !TestToggleRenderCommandsIncludeTrackKnobAndLabel() || !TestSliderDefaultsToMinimumValue() ||
+        !TestSliderValuePersistsAcrossFrames() || !TestSliderClickChangesValueOnlyOnChangedFrame() ||
+        !TestSliderClampsClickAfterTrackToMaximum() ||
+        !TestSliderHandlesReversedAndDegenerateRanges() ||
+        !TestSliderStateIsIndependentPerUiId() || !TestLayoutSliderAdvancesLayout() ||
+        !TestExplicitBoundsSliderDoesNotAdvanceLayout() ||
+        !TestSliderRenderCommandsIncludeTrackFillThumbAndLabel() ||
+        !TestSliderDragUpdatesWhileCaptured() ||
+        !TestOverlappingSliderAndButtonConsumeOneGesture() || !TestFocusDefaultsToEmpty() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
         !TestFocusPersistsAcrossFrames() || !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestNumericStateDefaultsToProvidedValue() ||

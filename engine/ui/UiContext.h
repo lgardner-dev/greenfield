@@ -59,6 +59,24 @@ struct ToggleStyle
     float borderThickness{1.0f};
 };
 
+struct SliderStyle
+{
+    Color trackFill{0.18f, 0.20f, 0.24f, 1.0f};
+    Color trackHovered{0.24f, 0.28f, 0.34f, 1.0f};
+    Color trackPressed{0.14f, 0.18f, 0.24f, 1.0f};
+    Color trackBorder{0.68f, 0.78f, 0.92f, 0.45f};
+    Color progressFill{0.34f, 0.60f, 0.95f, 1.0f};
+    Color thumbFill{0.92f, 0.96f, 1.0f, 1.0f};
+    Color textColor{0.92f, 0.96f, 1.0f, 1.0f};
+    float fontSize{18.0f};
+    float trackWidth{120.0f};
+    float trackHeight{8.0f};
+    float thumbWidth{14.0f};
+    float thumbHeight{22.0f};
+    float cornerRadius{4.0f};
+    float borderThickness{1.0f};
+};
+
 struct RectangleStyle
 {
     Color fillColor{};
@@ -133,6 +151,25 @@ public:
                               const ToggleStyle& toggleStyle);
     [[nodiscard]] bool Toggle(const std::string& name, const std::string& label, const Rect& bounds,
                               const ToggleStyle& toggleStyle);
+    [[nodiscard]] bool Slider(const std::string& name, float minimumValue, float maximumValue);
+    [[nodiscard]] bool Slider(const std::string& name, const std::string& label, float minimumValue,
+                              float maximumValue);
+    [[nodiscard]] bool Slider(const std::string& name, float minimumValue, float maximumValue,
+                              const SliderStyle& sliderStyle);
+    [[nodiscard]] bool Slider(const std::string& name, const std::string& label, float minimumValue,
+                              float maximumValue, const SliderStyle& sliderStyle);
+    [[nodiscard]] bool Slider(const std::string& name, const Vec2& itemSize, float minimumValue,
+                              float maximumValue, const SliderStyle& sliderStyle);
+    [[nodiscard]] bool Slider(const std::string& name, const std::string& label, const Vec2& itemSize,
+                              float minimumValue, float maximumValue, const SliderStyle& sliderStyle);
+    [[nodiscard]] bool Slider(const std::string& name, const Rect& bounds, float minimumValue,
+                              float maximumValue);
+    [[nodiscard]] bool Slider(const std::string& name, const std::string& label, const Rect& bounds,
+                              float minimumValue, float maximumValue);
+    [[nodiscard]] bool Slider(const std::string& name, const Rect& bounds, float minimumValue,
+                              float maximumValue, const SliderStyle& sliderStyle);
+    [[nodiscard]] bool Slider(const std::string& name, const std::string& label, const Rect& bounds,
+                              float minimumValue, float maximumValue, const SliderStyle& sliderStyle);
     [[nodiscard]] const RenderCommandList& EndFrame();
 
     void SetStyle(const Style& style);
@@ -189,6 +226,11 @@ private:
                                             const CheckboxStyle& checkboxStyle) const;
     [[nodiscard]] Color GetToggleTrackColor(const UiId& toggleId, const Rect& bounds,
                                             const ToggleStyle& toggleStyle) const;
+    [[nodiscard]] Color GetSliderTrackColor(const UiId& sliderId, const Rect& bounds,
+                                            const SliderStyle& sliderStyle) const;
+    [[nodiscard]] float GetNormalizedSliderValue(float value, float minimumValue, float maximumValue) const noexcept;
+    [[nodiscard]] float GetSliderValueAtMousePosition(const Rect& trackBounds, float minimumValue,
+                                                      float maximumValue) const noexcept;
     [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
     [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
@@ -196,6 +238,8 @@ private:
                       const CheckboxStyle& checkboxStyle);
     void DrawToggle(const UiId& toggleId, const std::string& label, const Rect& bounds,
                     const ToggleStyle& toggleStyle);
+    void DrawSlider(const UiId& sliderId, const std::string& label, const Rect& bounds, float minimumValue,
+                    float maximumValue, const SliderStyle& sliderStyle);
 
     friend struct UiContextTestAccess;
 

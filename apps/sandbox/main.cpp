@@ -115,6 +115,26 @@ ButtonStyle MakeInteractivePanelStyle(bool isSelected, Color accentColor)
     };
 }
 
+SliderStyle MakeRuntimeControlSliderStyle()
+{
+    return SliderStyle{
+        .trackFill = Color{0.050f, 0.065f, 0.085f, 0.94f},
+        .trackHovered = Color{0.095f, 0.130f, 0.170f, 0.96f},
+        .trackPressed = Color{0.040f, 0.055f, 0.075f, 0.98f},
+        .trackBorder = BorderColor,
+        .progressFill = BlueAccentColor,
+        .thumbFill = TextPrimaryColor,
+        .textColor = TextSecondaryColor,
+        .fontSize = 14.0f,
+        .trackWidth = 150.0f,
+        .trackHeight = 8.0f,
+        .thumbWidth = 12.0f,
+        .thumbHeight = 20.0f,
+        .cornerRadius = 4.0f,
+        .borderThickness = 1.0f,
+    };
+}
+
 Rect MakeRectangle(float x, float y, float width, float height)
 {
     return Rect{
@@ -383,17 +403,22 @@ void DrawControlActionsPanel(UiContext& uiContext, const Rect& bounds, Dashboard
     uiContext.Panel(bounds, MakePanelStyle(SurfaceColor));
     DrawSectionTitle(uiContext, MakeRectangle(bounds.position.x + 20.0f, bounds.position.y + 18.0f, 260.0f, 54.0f), "Control Actions", "Click actions to preview state");
 
-    float buttonTop = bounds.position.y + 74.0f;
+    float buttonTop = bounds.position.y + 68.0f;
     for (std::size_t index = 0; index < ActionNames.size(); ++index)
     {
         const bool isSelected = dashboardState.selectedActionIndex == static_cast<int>(index);
-        const Rect buttonBounds = MakeRectangle(bounds.position.x + 18.0f, buttonTop, bounds.size.x - 36.0f, 38.0f);
+        const Rect buttonBounds = MakeRectangle(bounds.position.x + 18.0f, buttonTop, bounds.size.x - 36.0f, 32.0f);
         if (uiContext.Button(std::string{"action-"} + std::to_string(index), ActionNames[index], buttonBounds, MakeInteractivePanelStyle(isSelected, index == 2U ? GreenAccentColor : BlueAccentColor)))
         {
             dashboardState.selectedActionIndex = static_cast<int>(index);
         }
-        buttonTop += 48.0f;
+        buttonTop += 40.0f;
     }
+
+    const Rect sliderBounds = MakeRectangle(bounds.position.x + 18.0f, bounds.position.y + bounds.size.y - 42.0f, bounds.size.x - 36.0f, 30.0f);
+    const bool mixChanged =
+        uiContext.Slider("runtime-mix-slider", "Mix", sliderBounds, 0.0f, 1.0f, MakeRuntimeControlSliderStyle());
+    (void)mixChanged;
 }
 
 void DrawAssetStatusPanel(UiContext& uiContext, const Rect& bounds, DashboardState& dashboardState)

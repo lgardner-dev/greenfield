@@ -14,6 +14,7 @@ constexpr float ButtonHorizontalTextInset{16.0f};
 constexpr float CheckboxHorizontalGap{10.0f};
 constexpr float CheckboxIndicatorInset{5.0f};
 constexpr float ToggleHorizontalGap{10.0f};
+constexpr float SliderHorizontalGap{10.0f};
 constexpr float MouseWheelScrollPixels{42.0f};
 
 } // namespace
@@ -429,6 +430,106 @@ bool UiContext::Toggle(const std::string& name, const std::string& label, const 
     return changed;
 }
 
+bool UiContext::Slider(const std::string& name, float minimumValue, float maximumValue)
+{
+    return Slider(name, name, minimumValue, maximumValue);
+}
+
+bool UiContext::Slider(const std::string& name, const std::string& label, float minimumValue,
+                       float maximumValue)
+{
+    return Slider(name, label, minimumValue, maximumValue, SliderStyle{});
+}
+
+bool UiContext::Slider(const std::string& name, float minimumValue, float maximumValue,
+                       const SliderStyle& sliderStyle)
+{
+    return Slider(name, name, minimumValue, maximumValue, sliderStyle);
+}
+
+bool UiContext::Slider(const std::string& name, const std::string& label, float minimumValue,
+                       float maximumValue, const SliderStyle& sliderStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(Vec2{});
+    return Slider(name, label, bounds, minimumValue, maximumValue, sliderStyle);
+}
+
+bool UiContext::Slider(const std::string& name, const Vec2& itemSize, float minimumValue,
+                       float maximumValue, const SliderStyle& sliderStyle)
+{
+    return Slider(name, name, itemSize, minimumValue, maximumValue, sliderStyle);
+}
+
+bool UiContext::Slider(const std::string& name, const std::string& label, const Vec2& itemSize,
+                       float minimumValue, float maximumValue, const SliderStyle& sliderStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(itemSize);
+    return Slider(name, label, bounds, minimumValue, maximumValue, sliderStyle);
+}
+
+bool UiContext::Slider(const std::string& name, const Rect& bounds, float minimumValue,
+                       float maximumValue)
+{
+    return Slider(name, name, bounds, minimumValue, maximumValue);
+}
+
+bool UiContext::Slider(const std::string& name, const std::string& label, const Rect& bounds,
+                       float minimumValue, float maximumValue)
+{
+    return Slider(name, label, bounds, minimumValue, maximumValue, SliderStyle{});
+}
+
+bool UiContext::Slider(const std::string& name, const Rect& bounds, float minimumValue,
+                       float maximumValue, const SliderStyle& sliderStyle)
+{
+    return Slider(name, name, bounds, minimumValue, maximumValue, sliderStyle);
+}
+
+bool UiContext::Slider(const std::string& name, const std::string& label, const Rect& bounds,
+                       float minimumValue, float maximumValue, const SliderStyle& sliderStyle)
+{
+    const UiId sliderId = MakeUiId(name);
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    const float normalizedMinimumValue = std::min(minimumValue, maximumValue);
+    const float normalizedMaximumValue = std::max(minimumValue, maximumValue);
+    const float safeTrackWidth = std::max(0.0f, std::min(sliderStyle.trackWidth, bounds.size.x));
+    const float safeTrackHeight = std::max(0.0f, std::min(sliderStyle.trackHeight, bounds.size.y));
+    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
+    const Rect trackBounds{
+        .position = Vec2{.x = bounds.position.x, .y = trackTop},
+        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
+    };
+
+    if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
+    {
+        CaptureControl(sliderId);
+        ConsumeMousePress();
+    }
+
+    bool changed = false;
+    float currentValue = GetClampedNumericState(sliderId, normalizedMinimumValue, normalizedMinimumValue, normalizedMaximumValue);
+    if (IsControlActive(sliderId) && _inputState.leftMouseButtonDown)
+    {
+        const float nextValue =
+            GetSliderValueAtMousePosition(trackBounds, normalizedMinimumValue, normalizedMaximumValue);
+        changed = nextValue != currentValue;
+        if (changed)
+        {
+            SetNumericState(sliderId, nextValue);
+        }
+    }
+
+    DrawSlider(sliderId, label, bounds, normalizedMinimumValue, normalizedMaximumValue, sliderStyle);
+
+    if (IsControlActive(sliderId) && _inputState.leftMouseButtonReleased)
+    {
+        ConsumeMouseRelease();
+        ReleaseActiveControl();
+    }
+
+    return changed;
+}
+
 const RenderCommandList& UiContext::EndFrame()
 {
     return _renderCommands;
@@ -738,6 +839,46 @@ Color UiContext::GetToggleTrackColor(const UiId& toggleId, const Rect& bounds,
     return toggleStyle.trackOff;
 }
 
+Color UiContext::GetSliderTrackColor(const UiId& sliderId, const Rect& bounds,
+                                     const SliderStyle& sliderStyle) const
+{
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    if (IsControlActive(sliderId) && _inputState.leftMouseButtonDown)
+    {
+        return sliderStyle.trackPressed;
+    }
+
+    if (isHovered)
+    {
+        return sliderStyle.trackHovered;
+    }
+
+    return sliderStyle.trackFill;
+}
+
+float UiContext::GetNormalizedSliderValue(float value, float minimumValue, float maximumValue) const noexcept
+{
+    if (minimumValue == maximumValue)
+    {
+        return 0.0f;
+    }
+
+    return ClampLayoutValue((value - minimumValue) / (maximumValue - minimumValue), 0.0f, 1.0f);
+}
+
+float UiContext::GetSliderValueAtMousePosition(const Rect& trackBounds, float minimumValue,
+                                               float maximumValue) const noexcept
+{
+    if (minimumValue == maximumValue || trackBounds.size.x <= 0.0f)
+    {
+        return minimumValue;
+    }
+
+    const float normalizedPosition =
+        ClampLayoutValue((_inputState.mousePosition.x - trackBounds.position.x) / trackBounds.size.x, 0.0f, 1.0f);
+    return minimumValue + (maximumValue - minimumValue) * normalizedPosition;
+}
+
 float UiContext::GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight)
 {
     const float maximumScrollOffset = contentHeight > bounds.size.y ? contentHeight - bounds.size.y : 0.0f;
@@ -846,6 +987,60 @@ void UiContext::DrawToggle(const UiId& toggleId, const std::string& label, const
             },
     };
     DrawText(label, labelBounds, toggleStyle.fontSize, toggleStyle.textColor);
+}
+
+void UiContext::DrawSlider(const UiId& sliderId, const std::string& label, const Rect& bounds, float minimumValue,
+                           float maximumValue, const SliderStyle& sliderStyle)
+{
+    const float safeTrackWidth = std::max(0.0f, std::min(sliderStyle.trackWidth, bounds.size.x));
+    const float safeTrackHeight = std::max(0.0f, std::min(sliderStyle.trackHeight, bounds.size.y));
+    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
+    const Rect trackBounds{
+        .position = Vec2{.x = bounds.position.x, .y = trackTop},
+        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
+    };
+    DrawRectangle(trackBounds,
+                  RectangleStyle{
+                      .fillColor = GetSliderTrackColor(sliderId, bounds, sliderStyle),
+                      .cornerRadius = sliderStyle.cornerRadius,
+                      .borderColor = sliderStyle.trackBorder,
+                      .borderThickness = sliderStyle.borderThickness,
+                  });
+
+    const float value = GetClampedNumericState(sliderId, minimumValue, minimumValue, maximumValue);
+    const float normalizedValue = GetNormalizedSliderValue(value, minimumValue, maximumValue);
+    const Rect progressBounds{
+        .position = trackBounds.position,
+        .size = Vec2{.x = trackBounds.size.x * normalizedValue, .y = trackBounds.size.y},
+    };
+    DrawFilledRectangle(progressBounds, sliderStyle.progressFill, sliderStyle.cornerRadius);
+
+    const float safeThumbWidth = std::max(0.0f, std::min(sliderStyle.thumbWidth, bounds.size.x));
+    const float safeThumbHeight = std::max(0.0f, std::min(sliderStyle.thumbHeight, bounds.size.y));
+    const float thumbCenterLeft = trackBounds.position.x + trackBounds.size.x * normalizedValue - safeThumbWidth * 0.5f;
+    const float maximumThumbLeft = trackBounds.position.x + std::max(0.0f, trackBounds.size.x - safeThumbWidth);
+    const float thumbLeft = ClampLayoutValue(thumbCenterLeft, trackBounds.position.x, maximumThumbLeft);
+    const Rect thumbBounds{
+        .position =
+            Vec2{
+                .x = thumbLeft,
+                .y = bounds.position.y + (bounds.size.y - safeThumbHeight) * 0.5f,
+            },
+        .size = Vec2{.x = safeThumbWidth, .y = safeThumbHeight},
+    };
+    DrawFilledRectangle(thumbBounds, sliderStyle.thumbFill, sliderStyle.cornerRadius);
+
+    const float labelLeft = trackBounds.position.x + safeTrackWidth + SliderHorizontalGap;
+    const float labelTop = bounds.position.y + (bounds.size.y - sliderStyle.fontSize) * 0.5f - 2.0f;
+    const Rect labelBounds{
+        .position = Vec2{.x = labelLeft, .y = labelTop},
+        .size =
+            Vec2{
+                .x = std::max(0.0f, bounds.position.x + bounds.size.x - labelLeft),
+                .y = sliderStyle.fontSize * 1.4f,
+            },
+    };
+    DrawText(label, labelBounds, sliderStyle.fontSize, sliderStyle.textColor);
 }
 
 } // namespace greenfield
