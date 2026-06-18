@@ -93,7 +93,7 @@ The renderer direction is split between current implementation and future baseli
 - The current default build requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer by default.
 - Greenfield should not be described as WebGPU-first.
 - `greenfield_render_fast2d` is an implemented sibling backend foundation, and the sandbox path is currently opt-in visibly interactive through SDL CPU raster presentation.
-- Fast2D still defers text and only rasterizes deterministic plain rectangle fills, so the visible path is for faster UI structure iteration rather than full visual parity.
+- Fast2D now rasterizes deterministic filled rectangles with source-over alpha blending, hard-edged rectangular borders, hard-edged rounded fills, hard-edged rounded borders, and intersected nested clips. Its visible path has stronger Control Room shape parity than the original plain-rectangle foundation, but it still defers text and does not claim full WebGPU visual parity.
 - The one-frame Fast2D diagnostic/headless path remains available through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 - Renderer choice belongs in app/composition-root policy or narrow renderer-selection vocabulary, not UI widgets, render commands, surface types, or platform abstractions.
 - WebGPU/Dawn should remain backend-specific in direction.
@@ -111,6 +111,8 @@ WebGPU and Dawn includes should stay in this layer. FreeType usage for the curre
 
 This backend-local FreeType ownership is intentional for the current WebGPU renderer. `greenfield_ui` and `greenfield_render` must stay free of SDL, Dawn/WebGPU, and FreeType dependencies while emitting renderer-agnostic text commands. Future renderer backends, such as `greenfield_render_fast2d`, may own their own text/font path or share a later renderer-neutral text service without changing UI or application code.
 
+M6E intentionally defers Fast2D text rasterization. WebGPU continues to own the current backend-local FreeType text path. Fast2D remains guarded from FreeType includes, so adding backend-local FreeType to Fast2D would be an explicit future boundary-policy decision. A temporary built-in debug bitmap font was considered but deferred because it would create misleading low-quality visual parity.
+
 `WebGpuContext` depends on `INativeSurfaceProvider`, not `SdlWindow`. This is an important boundary: SDL is only one possible provider of native surface handles.
 
 ### `engine/render/fast2d`
@@ -122,9 +124,9 @@ The Fast2D backend foundation lives under `engine/render/fast2d`:
 - It prepares backend-local filled-rectangle operations.
 - It handles clip pushes and pops, including observable clip underflow tracking.
 - It defers text rasterization for later backend or shared text/font work.
-- It can rasterize deterministic plain filled rectangles with clipping into a backend-owned CPU raster target.
+- It can rasterize deterministic filled rectangles, source-over alpha blending, hard-edged rectangular borders, hard-edged rounded fills, hard-edged rounded borders, and intersected nested clips into a backend-owned CPU raster target.
 
-Fast2D currently preserves optional shape styling metadata such as corner radius, border color, and border thickness, but its CPU raster path draws only plain rectangle fills. Text is still deferred/count-only. Rounded corners, borders, antialiasing, richer shape rasterization, text/font sharing, full visual parity, and renderer composition remain future work.
+Fast2D shape and blend work remains backend-local under `engine/render/fast2d`; the reusable UI/runtime/render-neutral command code does not branch on renderer backend. Text is still deferred/count-only. Rich text shaping, shared text/font architecture, antialiasing, vector paths, transforms, gradients, full WebGPU visual parity, visual regression CI, and renderer composition remain future work.
 
 Fast2D must stay free of SDL, Dawn/WebGPU, and FreeType includes. Dependency boundary tests cover `engine/render/fast2d` with the same concrete-dependency guard as core, input, render-neutral command types, and UI.
 
@@ -184,7 +186,7 @@ The sandbox is the current demo application. It wires the layers together:
 - builds UI each frame
 - submits UI render commands to the renderer
 
-The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`. The default `webgpu` path is the interactive path and continues to create the SDL window, startup presenter, WebGPU context, and WebGPU renderer. The opt-in `fast2d` path creates its own SDL window, builds the same Control Room UI each frame, submits the renderer-neutral `RenderCommandList` to Fast2D, and presents the CPU raster through `SdlRasterPresenter`. The one-frame diagnostic/headless path remains available with `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
+The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`. The default `webgpu` path is the interactive path and continues to create the SDL window, startup presenter, WebGPU context, and WebGPU renderer. The opt-in `fast2d` path creates its own SDL window, builds the same Control Room UI each frame, submits the renderer-neutral `RenderCommandList` to Fast2D, and presents the CPU raster through `SdlRasterPresenter`. Fast2D keeps its SDL window hidden until the first valid raster presentation, which keeps first visible raster presentation in platform/composition-root code rather than reusable UI or render-neutral code. The one-frame diagnostic/headless path remains available with `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 
 Application code may know about concrete implementations because it is the composition root. Shared engine layers should not take dependencies back on the sandbox.
 
@@ -198,7 +200,7 @@ The top-level build currently defines these targets:
 
 - `greenfield_core`: interface target for core value types.
 - `greenfield_render`: interface target for renderer-neutral command and renderer interfaces.
-- `greenfield_render_fast2d`: Fast2D renderer backend foundation with CPU filled-rectangle rasterization and deferred text.
+- `greenfield_render_fast2d`: Fast2D renderer backend foundation with CPU filled-rectangle rasterization, source-over alpha blending, hard-edged rounded fills/borders, intersected nested clips, and deferred text.
 - `greenfield_ui`: UI runtime target.
 - `greenfield_platform`: interface target for platform abstractions.
 - `greenfield_sdl_platform`: SDL platform, startup presenter, and CPU raster presenter target.
@@ -288,7 +290,7 @@ The current frame rendering path is:
 
 `RenderCommandList` is the contract between UI and rendering. Adding a new renderer should not require UI widgets to know which backend is active.
 
-The current Fast2D backend also consumes `RenderCommandList`, but it is limited to backend-local command preparation, clipped CPU rasterization for plain filled rectangles, and deferred text tracking. The sandbox composition root can present that CPU raster through the SDL raster presenter without making Fast2D own SDL details.
+The current Fast2D backend also consumes `RenderCommandList`, but it is limited to backend-local command preparation, clipped CPU rasterization for filled rectangles, hard-edged borders/rounded rectangles, source-over alpha blending, and deferred text tracking. The sandbox composition root can present that CPU raster through the SDL raster presenter without making Fast2D own SDL details.
 
 The current renderer-selection work is not a compositor and does not implement mixed-surface composition. It lets the sandbox choose between the default interactive WebGPU path, the opt-in interactive Fast2D SDL raster path, and the opt-in one-frame Fast2D diagnostic/headless path.
 

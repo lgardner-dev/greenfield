@@ -12,7 +12,8 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Renderer-agnostic render commands that keep UI code independent from backend details
 - A current Dawn/WebGPU accelerated backend with clean ownership boundaries
 - Explicit sandbox renderer selection for `--renderer=webgpu` and `--renderer=fast2d`
-- A narrow Fast2D renderer backend foundation plus opt-in SDL CPU raster sandbox presentation
+- A narrow Fast2D renderer backend foundation plus opt-in visible SDL CPU raster sandbox presentation
+- M6E Fast2D visual parity foundation: source-over filled rectangles, hard-edged rectangular and rounded borders/fills, intersected nested clips, and stable first visible raster presentation
 - UI widget, layout, input, text, and render command basics, including Button, Checkbox, Toggle/Switch, and Slider
 - M6A UI runtime groundwork: renderer-neutral `UiId` identity, clearer per-frame versus persistent `UiContext` state, minimal focus state, active-control capture, and per-frame mouse press/release consumption
 - M6B first stateful controls: validated Checkbox and added Toggle/Switch as immediate-mode controls backed by `UiId`-keyed persistent boolean state
@@ -24,11 +25,11 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 ## Direction
 
-- `greenfield_render_fast2d` exists as a sibling backend target. It consumes renderer-neutral `RenderCommandList` commands, prepares backend-local fill operations, rasterizes deterministic plain filled rectangles with clipping into a CPU raster target, and defers text rasterization.
-- Fast2D preserves optional shape styling metadata such as corner radius, border color, and border thickness for later backend work, but the current CPU raster path draws only plain rectangle fills.
-- The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`.
+- `greenfield_render_fast2d` exists as a sibling backend target. It consumes renderer-neutral `RenderCommandList` commands, prepares backend-local fill operations, rasterizes deterministic filled rectangles with source-over alpha blending, hard-edged rectangular borders, hard-edged rounded fills, hard-edged rounded borders, and clipping into a CPU raster target, and defers text rasterization.
+- Fast2D now handles intersected nested clips for its CPU raster path. Shape rasterization remains intentionally hard-edged and does not include antialiasing, vector paths, transforms, gradients, text, or full WebGPU visual parity.
+- The single sandbox accepts `--renderer=webgpu` and `--renderer=fast2d` for side-by-side backend comparison without creating a second sandbox app.
 - WebGPU remains the default interactive sandbox renderer.
-- Fast2D is opt-in and visibly interactive in the sandbox through an SDL CPU raster presenter. Text remains deferred in Fast2D, so the visible path currently shows rectangle/fill UI structure without Fast2D text rasterization.
+- Fast2D is opt-in and visibly interactive in the sandbox through an SDL CPU raster presenter. The Fast2D SDL window is hidden until the first valid raster presentation so the first visible frame is stable. Text remains deferred in Fast2D, so the visible path shows stronger shape parity while labels and values remain visible only in the WebGPU path.
 - The one-frame Fast2D diagnostic path remains available with `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 - Renderer choice belongs in app/composition-root policy or narrow renderer-selection vocabulary, not in UI widgets, render commands, surface types, or platform abstractions.
 - `greenfield_render_webgpu` is the current real WebGPU backend target, and `greenfield_webgpu` remains a compatibility alias.
@@ -47,7 +48,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 ## Not In Scope Yet
 
-The current renderer-selection and Fast2D presentation work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, full Fast2D visual parity, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
+The current renderer-selection and Fast2D presentation work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Fast2D text rasterization, rich text shaping, shared text/font architecture, antialiasing, vector paths, transforms, gradients, visual regression CI, full WebGPU visual parity, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
 
 M5 export/target foundation work currently includes vocabulary and one minimal illustrative C++/CMake app-template scaffold. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
 
@@ -59,7 +60,7 @@ The current CMake project defines reusable SDK/runtime-style targets and one san
 
 - `greenfield_core`: interface target for core value types.
 - `greenfield_render`: interface target for renderer-neutral render commands and renderer interfaces.
-- `greenfield_render_fast2d`: Fast2D renderer backend foundation with CPU filled-rectangle rasterization and deferred text.
+- `greenfield_render_fast2d`: Fast2D renderer backend foundation with CPU filled-rectangle rasterization, hard-edged rounded fills/borders, source-over alpha blending, intersected nested clips, and deferred text.
 - `greenfield_ui`: UI context, `UiId` identity, layout, style, focus/capture groundwork, and immediate widget basics including Button, Checkbox, Toggle/Switch, and Slider controls.
 - `greenfield_platform`: interface target for platform abstractions.
 - `greenfield_sdl_platform`: SDL platform, startup presenter, and CPU raster presenter implementation.

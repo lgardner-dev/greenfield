@@ -22,11 +22,11 @@ M2 includes SDK-level surface identity and bounds, root immediate UI surface par
 
 ## M3
 
-M3 is the narrow Fast2D renderer foundation.
+M3 was the narrow Fast2D renderer foundation.
 
-Current M3 work includes the `greenfield_render_fast2d` backend target, renderer-neutral `RenderCommandList` consumption, backend-local fill preparation, clip stack handling, clip underflow tracking, deferred text tracking, and minimal CPU-side filled-rectangle rasterization with clipping. Fast2D preserves optional shape styling metadata for later backend work, but the current CPU raster path draws only deterministic plain rectangle fills.
+M3 introduced the `greenfield_render_fast2d` backend target, renderer-neutral `RenderCommandList` consumption, backend-local fill preparation, clip stack handling, clip underflow tracking, deferred text tracking, and minimal CPU-side filled-rectangle rasterization with clipping. Later M6E work expanded the current CPU raster path beyond the original plain-rectangle foundation.
 
-Fast2D is not production-ready and is not wired as the default sandbox renderer. The sandbox now has opt-in visible Fast2D presentation through SDL CPU raster upload, but full renderer composition, full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, full visual parity, mixed-surface composition, Canvas2D, Scene3D, shader tooling, Studio, and CLI remain future work.
+Fast2D is not production-ready and is not wired as the default sandbox renderer. The sandbox now has opt-in visible Fast2D presentation through SDL CPU raster upload, and M6E adds hard-edged rounded fills/borders, source-over alpha blending, and intersected nested clips. Full renderer composition, full text/font sharing, antialiasing, full visual parity, mixed-surface composition, Canvas2D, Scene3D, shader tooling, Studio, and CLI remain future work.
 
 ## M4
 
@@ -34,7 +34,7 @@ M4 is the narrow renderer-selection reality check.
 
 M4 work included renderer-neutral `RendererBackendKind` vocabulary, sandbox `--renderer=webgpu` and `--renderer=fast2d` parsing, and documentation of the original Fast2D presentation boundary. WebGPU remains the default interactive sandbox renderer. The one-frame Fast2D diagnostic/headless path is preserved through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 
-M6D adds the narrow SDL CPU raster presenter and opt-in visible Fast2D sandbox path. This does not implement a compositor, mixed-surface composition, Fast2D text rasterization, richer shape rasterization, or full visual parity.
+M6D adds the narrow SDL CPU raster presenter and opt-in visible Fast2D sandbox path. M6D did not implement a compositor, mixed-surface composition, Fast2D text rasterization, richer shape rasterization, or full visual parity.
 
 ## M5
 
@@ -84,6 +84,18 @@ The existing Control Room sandbox includes one small Slider example for manual v
 
 M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toasts, tooltips, accessibility, a retained UI tree, a full event dispatch system, a broad controls library, compositor work, mixed-surface composition, Canvas2D, Scene3D, shader tools, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared text/font service, Skia, Python bindings, or hot reload.
 
+## M6E
+
+M6E is the Fast2D visual parity foundation slice for the existing one-sandbox renderer-selection workflow.
+
+Current M6E work keeps WebGPU as the default interactive sandbox renderer and keeps Fast2D opt-in through `--renderer=fast2d`. The same sandbox continues to support `--renderer=webgpu` and `--renderer=fast2d` without creating a second sandbox app.
+
+M6E improves Fast2D visible UI parity with backend-local support for source-over alpha blending for filled rectangles, hard-edged rectangular borders, hard-edged rounded rectangle fills, hard-edged rounded rectangle borders, and intersected nested clip handling. It also keeps the Fast2D SDL window hidden until the first valid raster presentation so the first visible Fast2D frame is stable.
+
+M6E intentionally defers Fast2D text rasterization. WebGPU currently owns backend-local FreeType text rendering. Fast2D remains guarded from FreeType includes, so adding backend-local FreeType to Fast2D would be an explicit future boundary-policy decision. A temporary built-in debug bitmap font was considered but deferred because it would create misleading low-quality visual parity.
+
+M6E does not finish Fast2D and does not implement rich text shaping, shared text/font architecture, antialiasing, vector paths, transforms, gradients, compositor work, mixed-surface composition, visual regression CI, full WebGPU visual parity, Studio, CLI, Canvas2D, Scene3D, Skia, Python bindings, hot reload, accessibility, IME, or shared text/font services.
+
 ## v0.1 Direction
 
 - C++20-first authoring.
@@ -101,7 +113,7 @@ M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toast
 - Sandbox renderer selection: `--renderer=webgpu` or `--renderer=fast2d`.
 - Compatibility alias: `greenfield_webgpu` points to `greenfield_render_webgpu`.
 - Current default build requirement: Dawn/WebGPU and FreeType remain required because the sandbox still uses the WebGPU renderer.
-- Implemented Fast2D foundation: `greenfield_render_fast2d`, limited to renderer-neutral command consumption, backend-local preparation, clipped CPU filled-rectangle rasterization, and deferred text.
+- Implemented Fast2D foundation: `greenfield_render_fast2d`, limited to renderer-neutral command consumption, backend-local preparation, clipped CPU filled-rectangle rasterization, source-over alpha blending, hard-edged rectangular and rounded borders/fills, intersected nested clips, stable first visible SDL raster presentation, and deferred text.
 - Current Fast2D sandbox status: opt-in visibly interactive through SDL CPU raster presentation, with the one-frame diagnostic/headless path still available through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 - Future default baseline direction: Greenfield-owned Fast2D after later composition and presentation work.
 - WebGPU: backend-specific accelerated renderer direction.
@@ -111,9 +123,11 @@ M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toast
 
 - Full renderer composition
 - Full text/font sharing
-- Richer 2D shape rasterization
-- Rounded corners, borders, and antialiasing in Fast2D
+- Richer 2D shape rasterization beyond the current hard-edged Fast2D rectangle and rounded-rectangle path
+- Antialiasing in Fast2D
+- Fast2D text rasterization
 - Full visual parity for Fast2D presentation
+- Visual regression CI
 - Mixed-surface composition
 - Greenfield Studio implementation
 - Greenfield CLI implementation
