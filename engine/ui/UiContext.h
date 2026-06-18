@@ -218,6 +218,7 @@ private:
     void ApplyFocusTraversal();
     void MoveFocusForward();
     void MoveFocusBackward();
+    [[nodiscard]] bool IsKeyboardActivationRequested(const UiId& controlId) const noexcept;
     [[nodiscard]] bool GetBooleanState(const UiId& controlId) const;
     void SetBooleanState(const UiId& controlId, bool value);
     void ToggleBooleanState(const UiId& controlId);

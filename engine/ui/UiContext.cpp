@@ -254,7 +254,8 @@ bool UiContext::Button(const std::string& name, const std::string& label, const 
     }
 
     const bool isReleased = IsControlActive(buttonId) && _inputState.leftMouseButtonReleased;
-    const bool isClicked = isHovered && isReleased && !IsMouseReleaseConsumed();
+    const bool isMouseClicked = isHovered && isReleased && !IsMouseReleaseConsumed();
+    const bool isClicked = isMouseClicked || IsKeyboardActivationRequested(buttonId);
     DrawRectangle(bounds,
                   RectangleStyle{
                       .fillColor = GetButtonColor(buttonId, bounds, buttonStyle),
@@ -337,7 +338,8 @@ bool UiContext::Checkbox(const std::string& name, const std::string& label, cons
     }
 
     const bool isReleased = IsControlActive(checkboxId) && _inputState.leftMouseButtonReleased;
-    const bool changed = isHovered && isReleased && !IsMouseReleaseConsumed();
+    const bool changed =
+        (isHovered && isReleased && !IsMouseReleaseConsumed()) || IsKeyboardActivationRequested(checkboxId);
     if (changed)
     {
         ToggleBooleanState(checkboxId);
@@ -418,7 +420,8 @@ bool UiContext::Toggle(const std::string& name, const std::string& label, const 
     }
 
     const bool isReleased = IsControlActive(toggleId) && _inputState.leftMouseButtonReleased;
-    const bool changed = isHovered && isReleased && !IsMouseReleaseConsumed();
+    const bool changed =
+        (isHovered && isReleased && !IsMouseReleaseConsumed()) || IsKeyboardActivationRequested(toggleId);
     if (changed)
     {
         ToggleBooleanState(toggleId);
@@ -810,6 +813,11 @@ void UiContext::MoveFocusBackward()
 
     RequestFocus(focusedControl == _focusableControlIds.begin() ? _focusableControlIds.back()
                                                                 : *std::prev(focusedControl));
+}
+
+bool UiContext::IsKeyboardActivationRequested(const UiId& controlId) const noexcept
+{
+    return HasFocus(controlId) && !HasActiveControl() && (_inputState.enterPressed || _inputState.spacePressed);
 }
 
 bool UiContext::GetBooleanState(const UiId& controlId) const

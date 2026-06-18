@@ -416,7 +416,9 @@ namespace
         return false;
     }
 
-    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f},
+                                                  .leftMouseButtonDown = true,
+                                                  .leftMouseButtonPressed = true});
     if (uiContext.Button("test-button", buttonBounds, buttonStyle))
     {
         return false;
@@ -1661,6 +1663,181 @@ namespace
            UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.5f) == 0.0f;
 }
 
+[[nodiscard]] bool TestFocusedButtonActivatesOnEnter()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-button");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true});
+    const bool clicked =
+        uiContext.Button("keyboard-button", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return clicked && commands.Size() == 2U;
+}
+
+[[nodiscard]] bool TestFocusedButtonActivatesOnSpace()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-button");
+    uiContext.BeginFrame(MakeLayout(), InputState{.spacePressed = true});
+    const bool clicked =
+        uiContext.Button("keyboard-button", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return clicked && commands.Size() == 2U;
+}
+
+[[nodiscard]] bool TestUnfocusedButtonIgnoresKeyboardActivation()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("other-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true, .spacePressed = true});
+    const bool clicked =
+        uiContext.Button("keyboard-button", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !clicked && commands.Size() == 2U;
+}
+
+[[nodiscard]] bool TestFocusedCheckboxTogglesOnEnter()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-checkbox");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true});
+    const bool changed =
+        uiContext.Checkbox("keyboard-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-checkbox"));
+}
+
+[[nodiscard]] bool TestFocusedCheckboxTogglesOnSpace()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-checkbox");
+    uiContext.BeginFrame(MakeLayout(), InputState{.spacePressed = true});
+    const bool changed =
+        uiContext.Checkbox("keyboard-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-checkbox"));
+}
+
+[[nodiscard]] bool TestUnfocusedCheckboxIgnoresKeyboardActivation()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("other-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true, .spacePressed = true});
+    const bool changed =
+        uiContext.Checkbox("keyboard-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 2U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-checkbox"));
+}
+
+[[nodiscard]] bool TestFocusedToggleTogglesOnEnter()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-toggle");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true});
+    const bool changed =
+        uiContext.Toggle("keyboard-toggle", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-toggle"));
+}
+
+[[nodiscard]] bool TestFocusedToggleTogglesOnSpace()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-toggle");
+    uiContext.BeginFrame(MakeLayout(), InputState{.spacePressed = true});
+    const bool changed =
+        uiContext.Toggle("keyboard-toggle", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-toggle"));
+}
+
+[[nodiscard]] bool TestUnfocusedToggleIgnoresKeyboardActivation()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("other-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true, .spacePressed = true});
+    const bool changed =
+        uiContext.Toggle("keyboard-toggle", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 3U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-toggle"));
+}
+
+[[nodiscard]] bool TestKeyboardActivationIsIgnoredDuringMouseCapture()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("captured-checkbox");
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    const bool changedOnPress =
+        uiContext.Checkbox("captured-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& pressCommands = uiContext.EndFrame();
+    if (changedOnPress || pressCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f},
+                                                  .leftMouseButtonDown = true,
+                                                  .enterPressed = true,
+                                                  .spacePressed = true});
+    const bool changedDuringCapture =
+        uiContext.Checkbox("captured-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& dragCommands = uiContext.EndFrame();
+
+    return !changedDuringCapture && dragCommands.Size() == 2U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("captured-checkbox"));
+}
+
+[[nodiscard]] bool TestKeyboardActivationKeepsRendererNeutralCommands()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("neutral-checkbox");
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true});
+    const bool changed =
+        uiContext.Checkbox("neutral-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[2].type == RenderCommandType::DrawText;
+}
+
 [[nodiscard]] bool TestBooleanStatePersistsAcrossFrames()
 {
     using namespace greenfield;
@@ -1881,7 +2058,13 @@ int main()
         !TestShiftTabMovesFocusBackwardInEncounterOrder() ||
         !TestFocusPersistsWhenFocusedControlIsStillRegistered() ||
         !TestStaleFocusedControlTraversalStartsFromFrameEdge() ||
-        !TestKeyboardTraversalDoesNotActivateControls() || !TestBooleanStatePersistsAcrossFrames() ||
+        !TestKeyboardTraversalDoesNotActivateControls() || !TestFocusedButtonActivatesOnEnter() ||
+        !TestFocusedButtonActivatesOnSpace() || !TestUnfocusedButtonIgnoresKeyboardActivation() ||
+        !TestFocusedCheckboxTogglesOnEnter() || !TestFocusedCheckboxTogglesOnSpace() ||
+        !TestUnfocusedCheckboxIgnoresKeyboardActivation() || !TestFocusedToggleTogglesOnEnter() ||
+        !TestFocusedToggleTogglesOnSpace() || !TestUnfocusedToggleIgnoresKeyboardActivation() ||
+        !TestKeyboardActivationIsIgnoredDuringMouseCapture() ||
+        !TestKeyboardActivationKeepsRendererNeutralCommands() || !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestNumericStateDefaultsToProvidedValue() ||
         !TestNumericStatePersistsAcrossFrames() || !TestNumericStateIsIndependentPerUiId() ||
         !TestNumericStateCanBeOverwritten() || !TestClampedNumericStateHandlesRanges() ||
