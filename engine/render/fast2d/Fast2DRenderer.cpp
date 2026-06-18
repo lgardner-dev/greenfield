@@ -26,6 +26,41 @@ namespace
     };
 }
 
+[[nodiscard]] Color BlendSourceOver(Color sourceColor, Color destinationColor) noexcept
+{
+    const float sourceAlpha = std::clamp(sourceColor.alpha, 0.0f, 1.0f);
+    if (sourceAlpha >= 1.0f)
+    {
+        return sourceColor;
+    }
+
+    if (sourceAlpha <= 0.0f)
+    {
+        return destinationColor;
+    }
+
+    const float destinationAlpha = std::clamp(destinationColor.alpha, 0.0f, 1.0f);
+    const float inverseSourceAlpha = 1.0f - sourceAlpha;
+    const float outputAlpha = sourceAlpha + destinationAlpha * inverseSourceAlpha;
+    if (outputAlpha <= 0.0f)
+    {
+        return Color{};
+    }
+
+    return Color{
+        .red = (sourceColor.red * sourceAlpha +
+                destinationColor.red * destinationAlpha * inverseSourceAlpha) /
+               outputAlpha,
+        .green = (sourceColor.green * sourceAlpha +
+                  destinationColor.green * destinationAlpha * inverseSourceAlpha) /
+                 outputAlpha,
+        .blue = (sourceColor.blue * sourceAlpha +
+                 destinationColor.blue * destinationAlpha * inverseSourceAlpha) /
+                outputAlpha,
+        .alpha = outputAlpha,
+    };
+}
+
 } // namespace
 
 Fast2DRenderer::Fast2DRenderer(std::size_t rasterTargetWidth, std::size_t rasterTargetHeight)
@@ -224,7 +259,8 @@ void Fast2DRenderer::RasterizeFillRectangle(const Fast2DPreparedFillOperation& f
     {
         for (std::size_t x = left; x < right; ++x)
         {
-            _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)] = fillOperation.fillColor;
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(fillOperation.fillColor, destinationPixel);
         }
     }
 }

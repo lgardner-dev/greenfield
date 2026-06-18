@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdlib>
 
 #include "engine/render/fast2d/Fast2DRenderer.h"
@@ -10,6 +11,21 @@ namespace
                                 const greenfield::Color& color)
 {
     return greenfield::tests::ColorsMatch(renderer.RasterPixelAt(x, y), color);
+}
+
+[[nodiscard]] bool ColorsNearlyMatch(const greenfield::Color& firstColor, const greenfield::Color& secondColor)
+{
+    constexpr float Tolerance = 0.0001f;
+    return std::abs(firstColor.red - secondColor.red) <= Tolerance &&
+           std::abs(firstColor.green - secondColor.green) <= Tolerance &&
+           std::abs(firstColor.blue - secondColor.blue) <= Tolerance &&
+           std::abs(firstColor.alpha - secondColor.alpha) <= Tolerance;
+}
+
+[[nodiscard]] bool PixelNearlyMatches(const greenfield::Fast2DRenderer& renderer, std::size_t x, std::size_t y,
+                                      const greenfield::Color& color)
+{
+    return ColorsNearlyMatch(renderer.RasterPixelAt(x, y), color);
 }
 
 [[nodiscard]] bool TestConstructionSucceeds()
@@ -251,6 +267,102 @@ namespace
            PixelMatches(renderer, 2U, 2U, secondColor) && PixelMatches(renderer, 3U, 3U, secondColor);
 }
 
+[[nodiscard]] bool TestOpaqueFillStillReplacesRasterPixels()
+{
+    using namespace greenfield;
+
+    const Color firstColor{0.0f, 0.0f, 1.0f, 0.5f};
+    const Color secondColor{0.25f, 0.5f, 0.75f, 1.0f};
+    Fast2DRenderer renderer{2U, 2U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{2.0f, 2.0f}}, firstColor);
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}}, secondColor);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, secondColor);
+}
+
+[[nodiscard]] bool TestTransparentFillLeavesRasterPixelsUnchanged()
+{
+    using namespace greenfield;
+
+    const Color destinationColor{0.25f, 0.5f, 0.75f, 1.0f};
+    Fast2DRenderer renderer{2U, 2U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{2.0f, 2.0f}},
+                                    destinationColor);
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 0.0f});
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, destinationColor);
+}
+
+[[nodiscard]] bool TestPartialAlphaFillBlendsOverOpaqueDestination()
+{
+    using namespace greenfield;
+
+    Fast2DRenderer renderer{2U, 2U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{2.0f, 2.0f}},
+                                    Color{0.0f, 0.0f, 1.0f, 1.0f});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 0.5f});
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 1U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
+           PixelMatches(renderer, 0U, 0U, Color{0.0f, 0.0f, 1.0f, 1.0f});
+}
+
+[[nodiscard]] bool TestPartialAlphaFillBlendsAgainstExistingRasterPixels()
+{
+    using namespace greenfield;
+
+    Fast2DRenderer renderer{2U, 2U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{2.0f, 2.0f}},
+                                    Color{0.0f, 0.0f, 1.0f, 0.5f});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 0.5f});
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 1U, 1U, Color{0.5f, 0.0f, 0.25f, 1.0f});
+}
+
+[[nodiscard]] bool TestAlphaBlendedFillStillHonorsClip()
+{
+    using namespace greenfield;
+
+    const Color destinationColor{0.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    destinationColor);
+    renderCommands.PushClip(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 0.5f});
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 1U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
+           PixelMatches(renderer, 0U, 0U, destinationColor) &&
+           PixelMatches(renderer, 2U, 2U, destinationColor);
+}
+
 [[nodiscard]] bool TestClipLimitsRasterPixels()
 {
     using namespace greenfield;
@@ -381,7 +493,11 @@ int main()
         !TestBeginFrameResetsPreparedState() || !TestEndFrameCompletesWithoutPlatformDependencies() ||
         !TestFillRectangleWritesRasterPixels() || !TestOptionalFillFieldsAreDeferredByRasterPath() ||
         !TestLaterFillRectangleOverridesEarlierRasterPixels() || !TestClipLimitsRasterPixels() ||
-        !TestPopClipRestoresPreviousRasterClip() || !TestOutOfBoundsRectanglesAreClippedToRasterTarget() ||
+        !TestOpaqueFillStillReplacesRasterPixels() || !TestTransparentFillLeavesRasterPixelsUnchanged() ||
+        !TestPartialAlphaFillBlendsOverOpaqueDestination() ||
+        !TestPartialAlphaFillBlendsAgainstExistingRasterPixels() ||
+        !TestAlphaBlendedFillStillHonorsClip() || !TestPopClipRestoresPreviousRasterClip() ||
+        !TestOutOfBoundsRectanglesAreClippedToRasterTarget() ||
         !TestClipOutsideRasterTargetIsClippedSafely() || !TestDrawTextDoesNotAlterRasterPixels() ||
         !TestBeginFrameResetsRasterPixels())
     {
