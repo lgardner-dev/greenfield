@@ -967,6 +967,36 @@ namespace
            !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("independent-checkbox"));
 }
 
+[[nodiscard]] bool TestToggleAndCheckboxShareStateForMatchingUiId()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 64.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("shared-state-control"), true);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool toggleChanged = uiContext.Toggle("shared-state-control", toggleBounds);
+    const bool checkboxChanged = uiContext.Checkbox("shared-state-control", checkboxBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !toggleChanged && !checkboxChanged && commands.Size() == 6U &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{33.0f, 30.0f}, .size = Vec2{16.0f, 16.0f}}) &&
+           RectanglesMatch(commands.Commands()[4].rectangle,
+                           Rect{.position = Vec2{15.0f, 77.0f}, .size = Vec2{10.0f, 10.0f}}) &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("shared-state-control"));
+}
+
 [[nodiscard]] bool TestOverlappingToggleAndButtonConsumeOneGesture()
 {
     using namespace greenfield;
@@ -1311,6 +1341,7 @@ int main()
         !TestToggleClickTogglesOn() || !TestToggleOnStatePersistsAcrossFrames() ||
         !TestToggleSecondClickTogglesBackOff() || !TestToggleStateIsIndependentPerUiId() ||
         !TestToggleAndCheckboxStatesAreIndependentForDifferentUiIds() ||
+        !TestToggleAndCheckboxShareStateForMatchingUiId() ||
         !TestOverlappingToggleAndButtonConsumeOneGesture() ||
         !TestOverlappingToggleAndCheckboxConsumeOneGesture() ||
         !TestOverlappingTogglesConsumeOneGesture() || !TestLayoutToggleAdvancesLayout() ||
