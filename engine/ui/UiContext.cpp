@@ -13,6 +13,7 @@ constexpr float DefaultTextFontSize{18.0f};
 constexpr float ButtonHorizontalTextInset{16.0f};
 constexpr float CheckboxHorizontalGap{10.0f};
 constexpr float CheckboxIndicatorInset{5.0f};
+constexpr float ToggleHorizontalGap{10.0f};
 constexpr float MouseWheelScrollPixels{42.0f};
 
 } // namespace
@@ -348,6 +349,86 @@ bool UiContext::Checkbox(const std::string& name, const std::string& label, cons
     return changed;
 }
 
+bool UiContext::Toggle(const std::string& name)
+{
+    return Toggle(name, name);
+}
+
+bool UiContext::Toggle(const std::string& name, const std::string& label)
+{
+    return Toggle(name, label, ToggleStyle{});
+}
+
+bool UiContext::Toggle(const std::string& name, const ToggleStyle& toggleStyle)
+{
+    return Toggle(name, name, toggleStyle);
+}
+
+bool UiContext::Toggle(const std::string& name, const std::string& label,
+                       const ToggleStyle& toggleStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(Vec2{});
+    return Toggle(name, label, bounds, toggleStyle);
+}
+
+bool UiContext::Toggle(const std::string& name, const Vec2& itemSize,
+                       const ToggleStyle& toggleStyle)
+{
+    return Toggle(name, name, itemSize, toggleStyle);
+}
+
+bool UiContext::Toggle(const std::string& name, const std::string& label, const Vec2& itemSize,
+                       const ToggleStyle& toggleStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(itemSize);
+    return Toggle(name, label, bounds, toggleStyle);
+}
+
+bool UiContext::Toggle(const std::string& name, const Rect& bounds)
+{
+    return Toggle(name, name, bounds);
+}
+
+bool UiContext::Toggle(const std::string& name, const std::string& label, const Rect& bounds)
+{
+    return Toggle(name, label, bounds, ToggleStyle{});
+}
+
+bool UiContext::Toggle(const std::string& name, const Rect& bounds,
+                       const ToggleStyle& toggleStyle)
+{
+    return Toggle(name, name, bounds, toggleStyle);
+}
+
+bool UiContext::Toggle(const std::string& name, const std::string& label, const Rect& bounds,
+                       const ToggleStyle& toggleStyle)
+{
+    const UiId toggleId = MakeUiId(name);
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
+    {
+        CaptureControl(toggleId);
+        ConsumeMousePress();
+    }
+
+    const bool isReleased = IsControlActive(toggleId) && _inputState.leftMouseButtonReleased;
+    const bool changed = isHovered && isReleased && !IsMouseReleaseConsumed();
+    if (changed)
+    {
+        ToggleBooleanState(toggleId);
+    }
+
+    DrawToggle(toggleId, label, bounds, toggleStyle);
+
+    if (isReleased)
+    {
+        ConsumeMouseRelease();
+        ReleaseActiveControl();
+    }
+
+    return changed;
+}
+
 const RenderCommandList& UiContext::EndFrame()
 {
     return _renderCommands;
@@ -610,6 +691,28 @@ Color UiContext::GetCheckboxBoxColor(const UiId& checkboxId, const Rect& bounds,
     return checkboxStyle.boxFill;
 }
 
+Color UiContext::GetToggleTrackColor(const UiId& toggleId, const Rect& bounds,
+                                     const ToggleStyle& toggleStyle) const
+{
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    if (IsControlActive(toggleId) && _inputState.leftMouseButtonDown)
+    {
+        return toggleStyle.trackPressed;
+    }
+
+    if (GetBooleanState(toggleId))
+    {
+        return toggleStyle.trackOn;
+    }
+
+    if (isHovered)
+    {
+        return toggleStyle.trackHovered;
+    }
+
+    return toggleStyle.trackOff;
+}
+
 float UiContext::GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight)
 {
     const float maximumScrollOffset = contentHeight > bounds.size.y ? contentHeight - bounds.size.y : 0.0f;
@@ -675,6 +778,49 @@ void UiContext::DrawCheckbox(const UiId& checkboxId, const std::string& label, c
             },
     };
     DrawText(label, labelBounds, checkboxStyle.fontSize, checkboxStyle.textColor);
+}
+
+void UiContext::DrawToggle(const UiId& toggleId, const std::string& label, const Rect& bounds,
+                           const ToggleStyle& toggleStyle)
+{
+    const float safeTrackWidth = std::max(0.0f, std::min(toggleStyle.trackWidth, bounds.size.x));
+    const float safeTrackHeight = std::max(0.0f, std::min(toggleStyle.trackHeight, bounds.size.y));
+    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
+    const Rect trackBounds{
+        .position = Vec2{.x = bounds.position.x, .y = trackTop},
+        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
+    };
+    DrawRectangle(trackBounds,
+                  RectangleStyle{
+                      .fillColor = GetToggleTrackColor(toggleId, bounds, toggleStyle),
+                      .cornerRadius = toggleStyle.cornerRadius,
+                      .borderColor = toggleStyle.trackBorder,
+                      .borderThickness = toggleStyle.borderThickness,
+                  });
+
+    const float safeInset = std::max(0.0f, toggleStyle.knobInset);
+    const float maximumKnobSize = std::max(0.0f, safeTrackHeight - safeInset * 2.0f);
+    const float safeKnobSize = std::min(toggleStyle.knobSize, maximumKnobSize);
+    const float offKnobLeft = trackBounds.position.x + safeInset;
+    const float onKnobLeft = trackBounds.position.x + safeTrackWidth - safeInset - safeKnobSize;
+    const float knobLeft = GetBooleanState(toggleId) ? onKnobLeft : offKnobLeft;
+    const Rect knobBounds{
+        .position = Vec2{.x = knobLeft, .y = trackBounds.position.y + safeInset},
+        .size = Vec2{.x = safeKnobSize, .y = safeKnobSize},
+    };
+    DrawFilledRectangle(knobBounds, toggleStyle.knobFill, toggleStyle.cornerRadius * 0.5f);
+
+    const float labelLeft = trackBounds.position.x + safeTrackWidth + ToggleHorizontalGap;
+    const float labelTop = bounds.position.y + (bounds.size.y - toggleStyle.fontSize) * 0.5f - 2.0f;
+    const Rect labelBounds{
+        .position = Vec2{.x = labelLeft, .y = labelTop},
+        .size =
+            Vec2{
+                .x = std::max(0.0f, bounds.position.x + bounds.size.x - labelLeft),
+                .y = toggleStyle.fontSize * 1.4f,
+            },
+    };
+    DrawText(label, labelBounds, toggleStyle.fontSize, toggleStyle.textColor);
 }
 
 } // namespace greenfield

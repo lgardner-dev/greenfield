@@ -41,6 +41,24 @@ struct CheckboxStyle
     float borderThickness{1.0f};
 };
 
+struct ToggleStyle
+{
+    Color trackOff{0.18f, 0.20f, 0.24f, 1.0f};
+    Color trackOn{0.34f, 0.60f, 0.95f, 1.0f};
+    Color trackHovered{0.24f, 0.28f, 0.34f, 1.0f};
+    Color trackPressed{0.14f, 0.18f, 0.24f, 1.0f};
+    Color trackBorder{0.68f, 0.78f, 0.92f, 0.45f};
+    Color knobFill{0.92f, 0.96f, 1.0f, 1.0f};
+    Color textColor{0.92f, 0.96f, 1.0f, 1.0f};
+    float fontSize{18.0f};
+    float trackWidth{42.0f};
+    float trackHeight{22.0f};
+    float knobSize{16.0f};
+    float knobInset{3.0f};
+    float cornerRadius{11.0f};
+    float borderThickness{1.0f};
+};
+
 struct RectangleStyle
 {
     Color fillColor{};
@@ -100,6 +118,21 @@ public:
                                 const CheckboxStyle& checkboxStyle);
     [[nodiscard]] bool Checkbox(const std::string& name, const std::string& label, const Rect& bounds,
                                 const CheckboxStyle& checkboxStyle);
+    [[nodiscard]] bool Toggle(const std::string& name);
+    [[nodiscard]] bool Toggle(const std::string& name, const std::string& label);
+    [[nodiscard]] bool Toggle(const std::string& name, const ToggleStyle& toggleStyle);
+    [[nodiscard]] bool Toggle(const std::string& name, const std::string& label,
+                              const ToggleStyle& toggleStyle);
+    [[nodiscard]] bool Toggle(const std::string& name, const Vec2& itemSize,
+                              const ToggleStyle& toggleStyle);
+    [[nodiscard]] bool Toggle(const std::string& name, const std::string& label, const Vec2& itemSize,
+                              const ToggleStyle& toggleStyle);
+    [[nodiscard]] bool Toggle(const std::string& name, const Rect& bounds);
+    [[nodiscard]] bool Toggle(const std::string& name, const std::string& label, const Rect& bounds);
+    [[nodiscard]] bool Toggle(const std::string& name, const Rect& bounds,
+                              const ToggleStyle& toggleStyle);
+    [[nodiscard]] bool Toggle(const std::string& name, const std::string& label, const Rect& bounds,
+                              const ToggleStyle& toggleStyle);
     [[nodiscard]] const RenderCommandList& EndFrame();
 
     void SetStyle(const Style& style);
@@ -151,11 +184,15 @@ private:
                                        const ButtonStyle& buttonStyle) const;
     [[nodiscard]] Color GetCheckboxBoxColor(const UiId& checkboxId, const Rect& bounds,
                                             const CheckboxStyle& checkboxStyle) const;
+    [[nodiscard]] Color GetToggleTrackColor(const UiId& toggleId, const Rect& bounds,
+                                            const ToggleStyle& toggleStyle) const;
     [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
     [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
     void DrawCheckbox(const UiId& checkboxId, const std::string& label, const Rect& bounds,
                       const CheckboxStyle& checkboxStyle);
+    void DrawToggle(const UiId& toggleId, const std::string& label, const Rect& bounds,
+                    const ToggleStyle& toggleStyle);
 
     friend struct UiContextTestAccess;
 

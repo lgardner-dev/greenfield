@@ -806,6 +806,334 @@ namespace
            commands.Commands()[2].text == "Render label";
 }
 
+[[nodiscard]] bool TestToggleDefaultsOff()
+{
+    using namespace greenfield;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    if (uiContext.Toggle("default-toggle", toggleBounds))
+    {
+        return false;
+    }
+
+    const auto& commands = uiContext.EndFrame();
+    return commands.Size() == 3U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("default-toggle"));
+}
+
+[[nodiscard]] bool TestToggleClickTogglesOn()
+{
+    using namespace greenfield;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Toggle("toggle-on", toggleBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 3U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool changed = uiContext.Toggle("toggle-on", toggleBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return changed && releaseCommands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("toggle-on"));
+}
+
+[[nodiscard]] bool TestToggleOnStatePersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("persistent-toggle"), true);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Toggle("persistent-toggle", toggleBounds);
+    const auto& firstCommands = uiContext.EndFrame();
+    if (changed || firstCommands.Size() != 3U ||
+        !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("persistent-toggle")))
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool secondFrameChanged = uiContext.Toggle("persistent-toggle", toggleBounds);
+    const auto& secondCommands = uiContext.EndFrame();
+    return !secondFrameChanged && secondCommands.Size() == 3U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("persistent-toggle"));
+}
+
+[[nodiscard]] bool TestToggleSecondClickTogglesBackOff()
+{
+    using namespace greenfield;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("second-click-toggle"), true);
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Toggle("second-click-toggle", toggleBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 3U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool changed = uiContext.Toggle("second-click-toggle", toggleBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return changed && releaseCommands.Size() == 3U &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("second-click-toggle"));
+}
+
+[[nodiscard]] bool TestToggleStateIsIndependentPerUiId()
+{
+    using namespace greenfield;
+
+    const Rect firstToggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+    const Rect secondToggleBounds{
+        .position = Vec2{10.0f, 64.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("first-toggle"), true);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool firstChanged = uiContext.Toggle("first-toggle", firstToggleBounds);
+    const bool secondChanged = uiContext.Toggle("second-toggle", secondToggleBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !firstChanged && !secondChanged && commands.Size() == 6U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("first-toggle")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("second-toggle"));
+}
+
+[[nodiscard]] bool TestToggleAndCheckboxStatesAreIndependentForDifferentUiIds()
+{
+    using namespace greenfield;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 64.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("independent-toggle"), true);
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool toggleChanged = uiContext.Toggle("independent-toggle", toggleBounds);
+    const bool checkboxChanged = uiContext.Checkbox("independent-checkbox", checkboxBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !toggleChanged && !checkboxChanged && commands.Size() == 5U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("independent-toggle")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("independent-checkbox"));
+}
+
+[[nodiscard]] bool TestOverlappingToggleAndButtonConsumeOneGesture()
+{
+    using namespace greenfield;
+
+    const Rect overlappingBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Toggle("overlap-toggle", overlappingBounds) ||
+        uiContext.Button("overlap-button-with-toggle", overlappingBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 5U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool toggleChanged = uiContext.Toggle("overlap-toggle", overlappingBounds);
+    const bool buttonClicked = uiContext.Button("overlap-button-with-toggle", overlappingBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return toggleChanged && !buttonClicked && releaseCommands.Size() == 5U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("overlap-toggle"));
+}
+
+[[nodiscard]] bool TestOverlappingToggleAndCheckboxConsumeOneGesture()
+{
+    using namespace greenfield;
+
+    const Rect overlappingBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Toggle("overlap-toggle-checkbox", overlappingBounds) ||
+        uiContext.Checkbox("overlap-checkbox-with-toggle", overlappingBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 5U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool toggleChanged = uiContext.Toggle("overlap-toggle-checkbox", overlappingBounds);
+    const bool checkboxChanged = uiContext.Checkbox("overlap-checkbox-with-toggle", overlappingBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return toggleChanged && !checkboxChanged && releaseCommands.Size() == 5U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("overlap-toggle-checkbox")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("overlap-checkbox-with-toggle"));
+}
+
+[[nodiscard]] bool TestOverlappingTogglesConsumeOneGesture()
+{
+    using namespace greenfield;
+
+    const Rect overlappingBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    if (uiContext.Toggle("first-overlap-toggle", overlappingBounds) ||
+        uiContext.Toggle("second-overlap-toggle", overlappingBounds))
+    {
+        return false;
+    }
+    const auto& pressCommands = uiContext.EndFrame();
+    if (pressCommands.Size() != 6U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonReleased = true});
+    const bool firstChanged = uiContext.Toggle("first-overlap-toggle", overlappingBounds);
+    const bool secondChanged = uiContext.Toggle("second-overlap-toggle", overlappingBounds);
+    const auto& releaseCommands = uiContext.EndFrame();
+
+    return firstChanged && !secondChanged && releaseCommands.Size() == 6U &&
+           UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("first-overlap-toggle")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("second-overlap-toggle"));
+}
+
+[[nodiscard]] bool TestLayoutToggleAdvancesLayout()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{220.0f, 120.0f}},
+        .padding = 10.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{100.0f, 40.0f},
+    });
+    const bool changed = uiContext.Toggle("layout-toggle");
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 4U &&
+           RectanglesMatch(commands.Commands()[3].rectangle,
+                           Rect{.position = Vec2{10.0f, 56.0f}, .size = Vec2{100.0f, 40.0f}});
+}
+
+[[nodiscard]] bool TestExplicitBoundsToggleDoesNotAdvanceLayout()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout());
+    uiContext.BeginColumn(LayoutContainer{
+        .bounds = Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{220.0f, 120.0f}},
+        .padding = 10.0f,
+        .gap = 6.0f,
+        .itemSize = Vec2{100.0f, 40.0f},
+    });
+    const bool changed =
+        uiContext.Toggle("explicit-toggle",
+                         Rect{.position = Vec2{30.0f, 70.0f}, .size = Vec2{150.0f, 32.0f}});
+    uiContext.Panel(Color{0.2f, 0.3f, 0.4f, 1.0f});
+
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 4U &&
+           RectanglesMatch(commands.Commands()[3].rectangle,
+                           Rect{.position = Vec2{10.0f, 10.0f}, .size = Vec2{100.0f, 40.0f}});
+}
+
+[[nodiscard]] bool TestToggleRenderCommandsIncludeTrackKnobAndLabel()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    UiContextTestAccess::SetBooleanState(uiContext, MakeUiId("render-toggle"), true);
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Toggle("render-toggle", "Render toggle", toggleBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 3U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[2].type == RenderCommandType::DrawText &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{10.0f, 27.0f}, .size = Vec2{42.0f, 22.0f}}) &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{33.0f, 30.0f}, .size = Vec2{16.0f, 16.0f}}) &&
+           commands.Commands()[2].text == "Render toggle";
+}
+
 [[nodiscard]] bool TestFocusDefaultsToEmpty()
 {
     using namespace greenfield;
@@ -979,7 +1307,15 @@ int main()
         !TestOverlappingCheckboxAndButtonConsumeOneGesture() ||
         !TestOverlappingCheckboxesConsumeOneGesture() || !TestLayoutCheckboxAdvancesLayout() ||
         !TestExplicitBoundsCheckboxDoesNotAdvanceLayout() ||
-        !TestCheckboxRenderCommandsIncludeBoxIndicatorAndLabel() || !TestFocusDefaultsToEmpty() ||
+        !TestCheckboxRenderCommandsIncludeBoxIndicatorAndLabel() || !TestToggleDefaultsOff() ||
+        !TestToggleClickTogglesOn() || !TestToggleOnStatePersistsAcrossFrames() ||
+        !TestToggleSecondClickTogglesBackOff() || !TestToggleStateIsIndependentPerUiId() ||
+        !TestToggleAndCheckboxStatesAreIndependentForDifferentUiIds() ||
+        !TestOverlappingToggleAndButtonConsumeOneGesture() ||
+        !TestOverlappingToggleAndCheckboxConsumeOneGesture() ||
+        !TestOverlappingTogglesConsumeOneGesture() || !TestLayoutToggleAdvancesLayout() ||
+        !TestExplicitBoundsToggleDoesNotAdvanceLayout() ||
+        !TestToggleRenderCommandsIncludeTrackKnobAndLabel() || !TestFocusDefaultsToEmpty() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
         !TestFocusPersistsAcrossFrames() || !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestFocusIsIndependentFromActiveControlAndScrollState())
