@@ -39,6 +39,7 @@ public:
 private:
     SdlWindow* _window{nullptr};
     std::vector<std::uint8_t> _rgbaPixels;
+    bool _hasPresentedRaster{false};
 };
 
 } // namespace greenfield

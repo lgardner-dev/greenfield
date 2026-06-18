@@ -49,14 +49,20 @@ void SdlWindowDeleter::operator()(SDL_Window* window) const noexcept
     }
 }
 
-SdlWindow::SdlWindow(std::string title, int width, int height)
+SdlWindow::SdlWindow(std::string title, int width, int height, SdlWindowVisibility visibility)
     : _title(std::move(title))
     , _width(width)
     , _height(height)
 {
     InitializeSdlVideo();
 
-    _window.reset(SDL_CreateWindow(_title.c_str(), _width, _height, SDL_WINDOW_RESIZABLE));
+    SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE;
+    if (visibility == SdlWindowVisibility::Hidden)
+    {
+        windowFlags |= SDL_WINDOW_HIDDEN;
+    }
+
+    _window.reset(SDL_CreateWindow(_title.c_str(), _width, _height, windowFlags));
     if (_window == nullptr)
     {
         const std::string errorMessage = SDL_GetError();
@@ -111,6 +117,19 @@ void SdlWindow::PollEvents()
     }
 
     UpdateWindowSize();
+}
+
+void SdlWindow::Show()
+{
+    if (_window == nullptr)
+    {
+        return;
+    }
+
+    if (!SDL_ShowWindow(_window.get()))
+    {
+        throw std::runtime_error(SDL_GetError());
+    }
 }
 
 bool SdlWindow::ShouldClose() const noexcept

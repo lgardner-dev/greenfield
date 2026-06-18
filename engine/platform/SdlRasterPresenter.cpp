@@ -146,6 +146,12 @@ bool SdlRasterPresenter::PresentRaster(std::size_t width, std::size_t height, st
         ThrowSdlError("Failed to present SDL raster window surface");
     }
 
+    if (!_hasPresentedRaster)
+    {
+        _window->Show();
+        _hasPresentedRaster = true;
+    }
+
     SDL_SyncWindow(_window->GetNativeWindow());
     return true;
 }

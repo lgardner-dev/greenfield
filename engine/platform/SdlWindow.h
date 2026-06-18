@@ -16,10 +16,17 @@ struct SdlWindowDeleter
     void operator()(SDL_Window* window) const noexcept;
 };
 
+enum class SdlWindowVisibility
+{
+    Visible,
+    Hidden,
+};
+
 class SdlWindow final : public IWindow, public INativeSurfaceProvider
 {
 public:
-    SdlWindow(std::string title, int width, int height);
+    SdlWindow(std::string title, int width, int height,
+              SdlWindowVisibility visibility = SdlWindowVisibility::Visible);
     ~SdlWindow() override;
 
     SdlWindow(const SdlWindow&) = delete;
@@ -28,6 +35,7 @@ public:
     SdlWindow& operator=(SdlWindow&&) = delete;
 
     void PollEvents() override;
+    void Show();
     [[nodiscard]] bool ShouldClose() const noexcept override;
     [[nodiscard]] int GetWidth() const noexcept override;
     [[nodiscard]] int GetHeight() const noexcept override;

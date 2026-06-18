@@ -562,7 +562,10 @@ int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
 
 int RunFast2DSandbox(const SandboxWindowSize& initialWindowSize)
 {
-    SdlWindow window{"Greenfield Sandbox - Fast2D", initialWindowSize.width, initialWindowSize.height};
+    SdlWindow window{"Greenfield Sandbox - Fast2D",
+                     initialWindowSize.width,
+                     initialWindowSize.height,
+                     SdlWindowVisibility::Hidden};
     Fast2DRenderer renderer{static_cast<std::size_t>(window.GetWidth()),
                             static_cast<std::size_t>(window.GetHeight())};
     SdlRasterPresenter presenter{window};
