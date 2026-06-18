@@ -1,6 +1,7 @@
 #include "engine/ui/UiContext.h"
 
 #include <algorithm>
+#include <iterator>
 
 namespace greenfield
 {
@@ -31,6 +32,7 @@ void UiContext::BeginFrame(const Layout& layout, const InputState& inputState)
     _renderCommands.Clear();
     _layoutStack.clear();
     _scrollPanelStack.clear();
+    _focusableControlIds.clear();
     _mousePressConsumed = false;
     _mouseReleaseConsumed = false;
     BeginColumn(LayoutContainer{
@@ -243,6 +245,7 @@ bool UiContext::Button(const std::string& name, const std::string& label, const 
                        const ButtonStyle& buttonStyle)
 {
     const UiId buttonId = MakeUiId(name);
+    RegisterFocusableControl(buttonId);
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
     {
@@ -325,6 +328,7 @@ bool UiContext::Checkbox(const std::string& name, const std::string& label, cons
                          const CheckboxStyle& checkboxStyle)
 {
     const UiId checkboxId = MakeUiId(name);
+    RegisterFocusableControl(checkboxId);
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
     {
@@ -405,6 +409,7 @@ bool UiContext::Toggle(const std::string& name, const std::string& label, const 
                        const ToggleStyle& toggleStyle)
 {
     const UiId toggleId = MakeUiId(name);
+    RegisterFocusableControl(toggleId);
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
     {
@@ -489,6 +494,7 @@ bool UiContext::Slider(const std::string& name, const std::string& label, const 
                        float minimumValue, float maximumValue, const SliderStyle& sliderStyle)
 {
     const UiId sliderId = MakeUiId(name);
+    RegisterFocusableControl(sliderId);
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     const float normalizedMinimumValue = std::min(minimumValue, maximumValue);
     const float normalizedMaximumValue = std::max(minimumValue, maximumValue);
@@ -532,6 +538,7 @@ bool UiContext::Slider(const std::string& name, const std::string& label, const 
 
 const RenderCommandList& UiContext::EndFrame()
 {
+    ApplyFocusTraversal();
     return _renderCommands;
 }
 
@@ -736,6 +743,73 @@ void UiContext::ConsumeMousePress() noexcept
 void UiContext::ConsumeMouseRelease() noexcept
 {
     _mouseReleaseConsumed = true;
+}
+
+void UiContext::RegisterFocusableControl(const UiId& controlId)
+{
+    _focusableControlIds.push_back(controlId);
+}
+
+void UiContext::ApplyFocusTraversal()
+{
+    if (_inputState.shiftTabPressed)
+    {
+        MoveFocusBackward();
+        return;
+    }
+
+    if (_inputState.tabPressed)
+    {
+        MoveFocusForward();
+    }
+}
+
+void UiContext::MoveFocusForward()
+{
+    if (_focusableControlIds.empty())
+    {
+        return;
+    }
+
+    if (!_focusedControlId.has_value())
+    {
+        RequestFocus(_focusableControlIds.front());
+        return;
+    }
+
+    const auto focusedControl = std::find(_focusableControlIds.begin(), _focusableControlIds.end(), _focusedControlId.value());
+    if (focusedControl == _focusableControlIds.end())
+    {
+        RequestFocus(_focusableControlIds.front());
+        return;
+    }
+
+    const auto nextControl = std::next(focusedControl);
+    RequestFocus(nextControl == _focusableControlIds.end() ? _focusableControlIds.front() : *nextControl);
+}
+
+void UiContext::MoveFocusBackward()
+{
+    if (_focusableControlIds.empty())
+    {
+        return;
+    }
+
+    if (!_focusedControlId.has_value())
+    {
+        RequestFocus(_focusableControlIds.back());
+        return;
+    }
+
+    const auto focusedControl = std::find(_focusableControlIds.begin(), _focusableControlIds.end(), _focusedControlId.value());
+    if (focusedControl == _focusableControlIds.end())
+    {
+        RequestFocus(_focusableControlIds.back());
+        return;
+    }
+
+    RequestFocus(focusedControl == _focusableControlIds.begin() ? _focusableControlIds.back()
+                                                                : *std::prev(focusedControl));
 }
 
 bool UiContext::GetBooleanState(const UiId& controlId) const

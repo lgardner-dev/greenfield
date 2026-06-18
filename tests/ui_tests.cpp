@@ -1512,6 +1512,155 @@ namespace
     return secondCommands.IsEmpty() && uiContext.HasFocus("persistent-control");
 }
 
+[[nodiscard]] bool TestTabFocusesFirstFocusableControlWhenNothingIsFocused()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.tabPressed = true});
+    const bool buttonClicked = uiContext.Button("first-focusable", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool checkboxChanged =
+        uiContext.Checkbox("second-focusable", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{140.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !buttonClicked && !checkboxChanged && commands.Size() == 4U && uiContext.HasFocus("first-focusable");
+}
+
+[[nodiscard]] bool TestShiftTabFocusesLastFocusableControlWhenNothingIsFocused()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.shiftTabPressed = true});
+    const bool buttonClicked = uiContext.Button("first-focusable", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool toggleChanged =
+        uiContext.Toggle("last-focusable", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !buttonClicked && !toggleChanged && commands.Size() == 5U && uiContext.HasFocus("last-focusable");
+}
+
+[[nodiscard]] bool TestTabMovesFocusForwardInEncounterOrder()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("first-control");
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.tabPressed = true});
+    const bool firstClicked =
+        uiContext.Button("first-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool secondChanged =
+        uiContext.Checkbox("second-control", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{140.0f, 36.0f}});
+    const bool thirdChanged =
+        uiContext.Toggle("third-control", Rect{.position = Vec2{10.0f, 116.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !firstClicked && !secondChanged && !thirdChanged && commands.Size() == 7U &&
+           uiContext.HasFocus("second-control");
+}
+
+[[nodiscard]] bool TestShiftTabMovesFocusBackwardInEncounterOrder()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("third-control");
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.shiftTabPressed = true});
+    const bool firstClicked =
+        uiContext.Button("first-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool secondChanged =
+        uiContext.Checkbox("second-control", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{140.0f, 36.0f}});
+    const bool thirdChanged =
+        uiContext.Toggle("third-control", Rect{.position = Vec2{10.0f, 116.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !firstClicked && !secondChanged && !thirdChanged && commands.Size() == 7U &&
+           uiContext.HasFocus("second-control");
+}
+
+[[nodiscard]] bool TestFocusPersistsWhenFocusedControlIsStillRegistered()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("persistent-focusable");
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool firstClicked =
+        uiContext.Button("first-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool firstChanged =
+        uiContext.Checkbox("persistent-focusable", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& firstCommands = uiContext.EndFrame();
+    if (firstClicked || firstChanged || firstCommands.Size() != 4U || !uiContext.HasFocus("persistent-focusable"))
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool secondClicked =
+        uiContext.Button("first-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool secondChanged =
+        uiContext.Checkbox("persistent-focusable", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{160.0f, 36.0f}});
+    const auto& secondCommands = uiContext.EndFrame();
+
+    return !secondClicked && !secondChanged && secondCommands.Size() == 4U &&
+           uiContext.HasFocus("persistent-focusable");
+}
+
+[[nodiscard]] bool TestStaleFocusedControlTraversalStartsFromFrameEdge()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("missing-control");
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.tabPressed = true});
+    const bool firstClicked =
+        uiContext.Button("first-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool secondClicked =
+        uiContext.Button("second-control", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{100.0f, 40.0f}});
+    const auto& forwardCommands = uiContext.EndFrame();
+    if (firstClicked || secondClicked || forwardCommands.Size() != 4U || !uiContext.HasFocus("first-control"))
+    {
+        return false;
+    }
+
+    uiContext.RequestFocus("missing-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.shiftTabPressed = true});
+    const bool backwardFirstClicked =
+        uiContext.Button("first-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool backwardSecondClicked =
+        uiContext.Button("second-control", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{100.0f, 40.0f}});
+    const auto& backwardCommands = uiContext.EndFrame();
+
+    return !backwardFirstClicked && !backwardSecondClicked && backwardCommands.Size() == 4U &&
+           uiContext.HasFocus("second-control");
+}
+
+[[nodiscard]] bool TestKeyboardTraversalDoesNotActivateControls()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.tabPressed = true, .enterPressed = true, .spacePressed = true});
+    const bool buttonClicked = uiContext.Button("keyboard-button", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
+    const bool checkboxChanged =
+        uiContext.Checkbox("keyboard-checkbox", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{140.0f, 36.0f}});
+    const bool toggleChanged =
+        uiContext.Toggle("keyboard-toggle", Rect{.position = Vec2{10.0f, 116.0f}, .size = Vec2{160.0f, 36.0f}});
+    const bool sliderChanged =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 162.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 1.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !buttonClicked && !checkboxChanged && !toggleChanged && !sliderChanged && commands.Size() == 11U &&
+           uiContext.HasFocus("keyboard-button") &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-checkbox")) &&
+           !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-toggle")) &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.5f) == 0.0f;
+}
+
 [[nodiscard]] bool TestBooleanStatePersistsAcrossFrames()
 {
     using namespace greenfield;
@@ -1725,7 +1874,14 @@ int main()
         !TestSliderDragUpdatesWhileCaptured() ||
         !TestOverlappingSliderAndButtonConsumeOneGesture() || !TestFocusDefaultsToEmpty() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
-        !TestFocusPersistsAcrossFrames() || !TestBooleanStatePersistsAcrossFrames() ||
+        !TestFocusPersistsAcrossFrames() ||
+        !TestTabFocusesFirstFocusableControlWhenNothingIsFocused() ||
+        !TestShiftTabFocusesLastFocusableControlWhenNothingIsFocused() ||
+        !TestTabMovesFocusForwardInEncounterOrder() ||
+        !TestShiftTabMovesFocusBackwardInEncounterOrder() ||
+        !TestFocusPersistsWhenFocusedControlIsStillRegistered() ||
+        !TestStaleFocusedControlTraversalStartsFromFrameEdge() ||
+        !TestKeyboardTraversalDoesNotActivateControls() || !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestNumericStateDefaultsToProvidedValue() ||
         !TestNumericStatePersistsAcrossFrames() || !TestNumericStateIsIndependentPerUiId() ||
         !TestNumericStateCanBeOverwritten() || !TestClampedNumericStateHandlesRanges() ||

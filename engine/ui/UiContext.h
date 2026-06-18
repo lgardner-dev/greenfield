@@ -214,6 +214,10 @@ private:
     [[nodiscard]] bool IsMouseReleaseConsumed() const noexcept;
     void ConsumeMousePress() noexcept;
     void ConsumeMouseRelease() noexcept;
+    void RegisterFocusableControl(const UiId& controlId);
+    void ApplyFocusTraversal();
+    void MoveFocusForward();
+    void MoveFocusBackward();
     [[nodiscard]] bool GetBooleanState(const UiId& controlId) const;
     void SetBooleanState(const UiId& controlId, bool value);
     void ToggleBooleanState(const UiId& controlId);
@@ -256,6 +260,7 @@ private:
     InputState _inputState{};
     std::vector<LayoutFrame> _layoutStack{};
     std::vector<ScrollPanelFrame> _scrollPanelStack{};
+    std::vector<UiId> _focusableControlIds{};
     RenderCommandList _renderCommands{};
     bool _mousePressConsumed{false};
     bool _mouseReleaseConsumed{false};
