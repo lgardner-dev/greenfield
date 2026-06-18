@@ -57,6 +57,7 @@ target_include_directories(greenfield_platform INTERFACE "${PROJECT_SOURCE_DIR}"
 target_link_libraries(greenfield_platform INTERFACE greenfield_core)
 
 add_library(greenfield_sdl_platform
+    engine/platform/SdlRasterPresenter.cpp
     engine/platform/SdlStartupPresenter.cpp
     engine/platform/SdlWindow.cpp
 )
@@ -123,4 +124,12 @@ if(BUILD_TESTING)
                                                                     greenfield_render_fast2d)
     greenfield_enable_warnings(greenfield_fast2d_renderer_tests)
     add_test(NAME greenfield_fast2d_renderer_tests COMMAND greenfield_fast2d_renderer_tests)
+
+    add_executable(greenfield_sdl_raster_presenter_tests
+        tests/sdl_raster_presenter_tests.cpp
+    )
+    target_include_directories(greenfield_sdl_raster_presenter_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+    target_link_libraries(greenfield_sdl_raster_presenter_tests PRIVATE greenfield_core greenfield_sdl_platform)
+    greenfield_enable_warnings(greenfield_sdl_raster_presenter_tests)
+    add_test(NAME greenfield_sdl_raster_presenter_tests COMMAND greenfield_sdl_raster_presenter_tests)
 endif()

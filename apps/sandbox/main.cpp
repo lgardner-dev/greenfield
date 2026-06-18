@@ -12,6 +12,7 @@
 #include "engine/core/Rect.h"
 #include "engine/core/Vec2.h"
 #include "engine/input/InputState.h"
+#include "engine/platform/SdlRasterPresenter.h"
 #include "engine/platform/SdlStartupPresenter.h"
 #include "engine/platform/SdlWindow.h"
 #include "engine/render/RendererBackendKind.h"
@@ -68,6 +69,7 @@ struct SandboxOptions
 {
     SandboxWindowSize windowSize{};
     RendererBackendKind rendererBackendKind{RendererBackendKind::WebGpu};
+    bool runHeadlessFast2D{false};
     std::string invalidRendererName{};
 };
 
@@ -210,6 +212,8 @@ SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
 {
     constexpr std::string_view WindowSizePrefix{"--window-size="};
     constexpr std::string_view RendererPrefix{"--renderer="};
+    constexpr std::string_view HeadlessFlag{"--headless"};
+    constexpr std::string_view DiagnosticFlag{"--diagnostic"};
     SandboxOptions sandboxOptions{};
 
     for (int argumentIndex = 1; argumentIndex < argumentCount; ++argumentIndex)
@@ -240,6 +244,12 @@ SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
             {
                 sandboxOptions.invalidRendererName = rendererName;
             }
+            continue;
+        }
+
+        if (argument == HeadlessFlag || argument == DiagnosticFlag)
+        {
+            sandboxOptions.runHeadlessFast2D = true;
             continue;
         }
     }
@@ -524,7 +534,7 @@ void BuildControlRoomFrame(UiContext& uiContext, const Layout& layout, Dashboard
 
 int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
 {
-    std::cout << "Running Fast2D diagnostic renderer path. No window presentation is available in this slice.\n";
+    std::cout << "Running Fast2D diagnostic renderer path.\n";
 
     Fast2DRenderer renderer{static_cast<std::size_t>(initialWindowSize.width),
                             static_cast<std::size_t>(initialWindowSize.height)};
@@ -546,6 +556,57 @@ int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
               << " commands, " << renderer.PreparedFillOperationCount() << " fill operations, "
               << renderer.DeferredTextCommandCount() << " deferred text commands, raster target "
               << renderer.RasterTargetWidth() << "x" << renderer.RasterTargetHeight() << ".\n";
+
+    return 0;
+}
+
+int RunFast2DSandbox(const SandboxWindowSize& initialWindowSize)
+{
+    SdlWindow window{"Greenfield Sandbox - Fast2D", initialWindowSize.width, initialWindowSize.height};
+    Fast2DRenderer renderer{static_cast<std::size_t>(window.GetWidth()),
+                            static_cast<std::size_t>(window.GetHeight())};
+    SdlRasterPresenter presenter{window};
+    UiContext uiContext;
+    ConfigureControlRoomStyle(uiContext);
+    DashboardState dashboardState{};
+
+    while (!window.ShouldClose())
+    {
+        window.PollEvents();
+        if (window.ShouldClose())
+        {
+            break;
+        }
+
+        if (window.GetWidth() <= 0 || window.GetHeight() <= 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            continue;
+        }
+
+        const auto rasterWidth = static_cast<std::size_t>(window.GetWidth());
+        const auto rasterHeight = static_cast<std::size_t>(window.GetHeight());
+        if (renderer.RasterTargetWidth() != rasterWidth || renderer.RasterTargetHeight() != rasterHeight)
+        {
+            renderer.ResizeRasterTarget(rasterWidth, rasterHeight);
+        }
+
+        renderer.BeginFrame();
+
+        const Layout layout =
+            MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
+        BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
+
+        const auto& renderCommands = uiContext.EndFrame();
+        renderer.Submit(renderCommands);
+        renderer.EndFrame();
+        if (!presenter.PresentRaster(renderer.RasterTargetWidth(), renderer.RasterTargetHeight(), renderer.RasterPixels()))
+        {
+            continue;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
 
     return 0;
 }
@@ -622,7 +683,12 @@ int main(int argumentCount, char* argumentValues[])
 
         if (sandboxOptions.rendererBackendKind == RendererBackendKind::Fast2D)
         {
-            return RunFast2DDiagnosticSandbox(sandboxOptions.windowSize);
+            if (sandboxOptions.runHeadlessFast2D)
+            {
+                return RunFast2DDiagnosticSandbox(sandboxOptions.windowSize);
+            }
+
+            return RunFast2DSandbox(sandboxOptions.windowSize);
         }
 
         return RunWebGpuSandbox(sandboxOptions.windowSize);

@@ -26,15 +26,15 @@ M3 is the narrow Fast2D renderer foundation.
 
 Current M3 work includes the `greenfield_render_fast2d` backend target, renderer-neutral `RenderCommandList` consumption, backend-local fill preparation, clip stack handling, clip underflow tracking, deferred text tracking, and minimal CPU-side filled-rectangle rasterization with clipping. Fast2D preserves optional shape styling metadata for later backend work, but the current CPU raster path draws only deterministic plain rectangle fills.
 
-Fast2D is not production-ready and is not wired as the default sandbox renderer. Full renderer composition, full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, visible platform presentation, mixed-surface composition, Canvas2D, Scene3D, shader tooling, Studio, and CLI remain future work.
+Fast2D is not production-ready and is not wired as the default sandbox renderer. The sandbox now has opt-in visible Fast2D presentation through SDL CPU raster upload, but full renderer composition, full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, full visual parity, mixed-surface composition, Canvas2D, Scene3D, shader tooling, Studio, and CLI remain future work.
 
 ## M4
 
 M4 is the narrow renderer-selection reality check.
 
-Current M4 work includes renderer-neutral `RendererBackendKind` vocabulary, sandbox `--renderer=webgpu` and `--renderer=fast2d` parsing, and documentation of the current Fast2D presentation boundary. WebGPU remains the default interactive sandbox renderer. Fast2D is selectable only as an opt-in diagnostic/headless path: it runs one Control Room frame, consumes the UI `RenderCommandList`, rasterizes currently supported CPU filled-rectangle behavior, defers/counts text, reports diagnostics, and exits without visible presentation.
+M4 work included renderer-neutral `RendererBackendKind` vocabulary, sandbox `--renderer=webgpu` and `--renderer=fast2d` parsing, and documentation of the original Fast2D presentation boundary. WebGPU remains the default interactive sandbox renderer. The one-frame Fast2D diagnostic/headless path is preserved through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 
-M4 does not implement a compositor or mixed-surface composition. Visible Fast2D presentation requires a future CPU raster presenter, SDL upload seam, or equivalent platform presentation decision.
+M6D adds the narrow SDL CPU raster presenter and opt-in visible Fast2D sandbox path. This does not implement a compositor, mixed-surface composition, Fast2D text rasterization, richer shape rasterization, or full visual parity.
 
 ## M5
 
@@ -102,7 +102,7 @@ M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toast
 - Compatibility alias: `greenfield_webgpu` points to `greenfield_render_webgpu`.
 - Current default build requirement: Dawn/WebGPU and FreeType remain required because the sandbox still uses the WebGPU renderer.
 - Implemented Fast2D foundation: `greenfield_render_fast2d`, limited to renderer-neutral command consumption, backend-local preparation, clipped CPU filled-rectangle rasterization, and deferred text.
-- Current Fast2D sandbox status: opt-in diagnostic/headless, not visibly presentable.
+- Current Fast2D sandbox status: opt-in visibly interactive through SDL CPU raster presentation, with the one-frame diagnostic/headless path still available through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 - Future default baseline direction: Greenfield-owned Fast2D after later composition and presentation work.
 - WebGPU: backend-specific accelerated renderer direction.
 - Skia: possible later optional backend, not the current foundation.
@@ -113,8 +113,7 @@ M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toast
 - Full text/font sharing
 - Richer 2D shape rasterization
 - Rounded corners, borders, and antialiasing in Fast2D
-- Visible platform presentation for Fast2D
-- CPU raster presenter or SDL upload seam for Fast2D
+- Full visual parity for Fast2D presentation
 - Mixed-surface composition
 - Greenfield Studio implementation
 - Greenfield CLI implementation

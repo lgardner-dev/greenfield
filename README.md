@@ -12,7 +12,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Renderer-agnostic render commands that keep UI code independent from backend details
 - A current Dawn/WebGPU accelerated backend with clean ownership boundaries
 - Explicit sandbox renderer selection for `--renderer=webgpu` and `--renderer=fast2d`
-- A narrow Fast2D diagnostic/headless renderer backend foundation for renderer-neutral command consumption
+- A narrow Fast2D renderer backend foundation plus opt-in SDL CPU raster sandbox presentation
 - UI widget, layout, input, text, and render command basics, including Button, Checkbox, Toggle/Switch, and Slider
 - M6A UI runtime groundwork: renderer-neutral `UiId` identity, clearer per-frame versus persistent `UiContext` state, minimal focus state, active-control capture, and per-frame mouse press/release consumption
 - M6B first stateful controls: validated Checkbox and added Toggle/Switch as immediate-mode controls backed by `UiId`-keyed persistent boolean state
@@ -28,8 +28,8 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Fast2D preserves optional shape styling metadata such as corner radius, border color, and border thickness for later backend work, but the current CPU raster path draws only plain rectangle fills.
 - The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`.
 - WebGPU remains the default interactive sandbox renderer.
-- Fast2D is opt-in diagnostic/headless in the sandbox. It runs one Control Room frame and reports command/fill/text/raster diagnostics, but it is not visibly presentable yet.
-- Visible Fast2D presentation needs a future CPU raster presenter, SDL upload seam, or equivalent platform presentation decision.
+- Fast2D is opt-in and visibly interactive in the sandbox through an SDL CPU raster presenter. Text remains deferred in Fast2D, so the visible path currently shows rectangle/fill UI structure without Fast2D text rasterization.
+- The one-frame Fast2D diagnostic path remains available with `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 - Renderer choice belongs in app/composition-root policy or narrow renderer-selection vocabulary, not in UI widgets, render commands, surface types, or platform abstractions.
 - `greenfield_render_webgpu` is the current real WebGPU backend target, and `greenfield_webgpu` remains a compatibility alias.
 - Dawn/WebGPU is the current implemented accelerated backend and should remain backend-specific in the architecture direction.
@@ -47,7 +47,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 ## Not In Scope Yet
 
-The current M4 renderer-selection work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, visible Fast2D platform presentation, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
+The current renderer-selection and Fast2D presentation work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Full text/font sharing, richer 2D shape rasterization, rounded corners, borders, antialiasing, full Fast2D visual parity, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, a compositor, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
 
 M5 export/target foundation work currently includes vocabulary and one minimal illustrative C++/CMake app-template scaffold. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
 
@@ -59,10 +59,10 @@ The current CMake project defines reusable SDK/runtime-style targets and one san
 
 - `greenfield_core`: interface target for core value types.
 - `greenfield_render`: interface target for renderer-neutral render commands and renderer interfaces.
-- `greenfield_render_fast2d`: Fast2D diagnostic/headless renderer backend foundation.
+- `greenfield_render_fast2d`: Fast2D renderer backend foundation with CPU filled-rectangle rasterization and deferred text.
 - `greenfield_ui`: UI context, `UiId` identity, layout, style, focus/capture groundwork, and immediate widget basics including Button, Checkbox, Toggle/Switch, and Slider controls.
 - `greenfield_platform`: interface target for platform abstractions.
-- `greenfield_sdl_platform`: SDL platform and startup presenter implementation.
+- `greenfield_sdl_platform`: SDL platform, startup presenter, and CPU raster presenter implementation.
 - `greenfield_render_webgpu`: Dawn/WebGPU renderer backend with backend-local FreeType text rendering.
 - `greenfield_webgpu`: compatibility alias for `greenfield_render_webgpu`.
 - `greenfield_sandbox`: demo executable in `apps/sandbox`.
@@ -109,9 +109,10 @@ ctest --preset dev --output-on-failure
 ./build/dev/bin/greenfield_sandbox
 ./build/dev/bin/greenfield_sandbox --renderer=webgpu
 ./build/dev/bin/greenfield_sandbox --renderer=fast2d
+./build/dev/bin/greenfield_sandbox --renderer=fast2d --headless
 ```
 
-`--renderer=webgpu` is the default interactive path. `--renderer=fast2d` runs the current diagnostic/headless Fast2D path and exits after one Control Room frame.
+`--renderer=webgpu` is the default interactive path. `--renderer=fast2d` runs the visible interactive Fast2D path through SDL CPU raster presentation. `--renderer=fast2d --headless` runs the one-frame diagnostic path and exits after reporting command/fill/text/raster diagnostics.
 
 ## Developer Commands
 
