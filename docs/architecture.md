@@ -140,7 +140,7 @@ The UI layer must not include SDL, Dawn, WebGPU, or FreeType. Widgets should emi
 
 The current immediate UI root is also describable as a `UiSurface`: a lightweight UI value that carries the root surface identity and the same frame bounds passed to `UiContext::BeginFrame`. This lets the UI root participate in the SDK surface vocabulary without adding a compositor, retained UI tree, or future Canvas2D/Scene3D surface system.
 
-M6A adds product-quality runtime groundwork inside this immediate UI model:
+M6A added product-quality runtime groundwork inside this immediate UI model:
 
 - `UiId` is the renderer-neutral and platform-neutral control identity type. Existing immediate UI string names are normalized internally into `UiId` where runtime state needs stable identity.
 - `UiContext` separates persistent runtime state from per-frame state. Style, active control identity, focus identity, and vertical scroll offsets persist across frames. Render commands, layout stack, scroll panel stack, input snapshot, and mouse press/release consumption flags are rebuilt for each frame.
@@ -148,7 +148,17 @@ M6A adds product-quality runtime groundwork inside this immediate UI model:
 - Active-control state is generalized as capture state instead of button-specific state. Buttons use it to keep a press/release gesture tied to the initiating control across frames.
 - Per-frame mouse press/release consumption prevents later overlapping buttons from claiming the same gesture while preserving existing immediate button calls.
 
-This foundation is UI runtime groundwork, not a retained-mode system or a broad controls milestone. It does not add a retained UI tree, full event dispatch system, keyboard input model, text input, IME, clipboard, selection, accessibility, or new control families.
+M6B establishes the first stateful control foundation inside the same immediate UI model:
+
+- Checkbox already existed and was audited as complete enough for M6B.
+- Toggle/Switch was added as a new immediate-mode stateful control.
+- Checkbox and Toggle both use `UiId`-keyed persistent boolean state in `UiContext`.
+- Both controls return `true` only when the current frame changes the control state.
+- State is independent for different `UiId`s. Matching names intentionally share the same `UiId`-keyed boolean state, even across Checkbox and Toggle.
+- Both controls use the existing active-control capture and per-frame mouse press/release consumption behavior.
+- Both controls emit renderer-neutral fill and text commands through `RenderCommandList`; they do not call SDL, Dawn/WebGPU, FreeType, or renderer APIs.
+
+This foundation is UI runtime and first-stateful-control groundwork, not a retained-mode system or broad controls milestone. It does not add sliders, tabs, dropdowns, modals, toasts, tooltips, keyboard input, text input, IME, clipboard, selection, accessibility, modal focus traps, a retained UI tree, full event dispatch system, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ### `apps/sandbox`
 

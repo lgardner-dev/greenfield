@@ -15,6 +15,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - A narrow Fast2D diagnostic/headless renderer backend foundation for renderer-neutral command consumption
 - UI widget, layout, input, text, and render command basics
 - M6A UI runtime groundwork: renderer-neutral `UiId` identity, clearer per-frame versus persistent `UiContext` state, minimal focus state, active-control capture, and per-frame mouse press/release consumption
+- M6B first stateful controls: validated Checkbox and added Toggle/Switch as immediate-mode controls backed by `UiId`-keyed persistent boolean state
 - Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
 - vcpkg manifest-mode as the default dependency path
@@ -49,7 +50,7 @@ The current M4 renderer-selection work is intentionally narrow. It is not a comp
 
 M5 export/target foundation work currently includes vocabulary and one minimal illustrative C++/CMake app-template scaffold. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
 
-M6A UI runtime foundation work currently includes identity, lifecycle/state, focus, capture, and input-consumption groundwork for the existing immediate UI. It does not add keyboard navigation, text input, accessibility, retained UI trees, a full event dispatch system, modal behavior, or a broader control set.
+M6B first stateful-control work currently includes the existing audited Checkbox and the new Toggle/Switch control. Both controls preserve the immediate UI model, emit renderer-neutral render commands, use active-control capture and per-frame mouse press/release consumption, store state as `UiId`-keyed persistent booleans, and return `true` only when the current frame changes that state. Different `UiId`s keep independent state; matching names intentionally share the same `UiId`-keyed boolean state. M6B does not change sandbox/runtime renderer behavior and does not add sliders, tabs, dropdowns, modals, toasts, tooltips, keyboard navigation, text entry, IME, clipboard, selection, accessibility, modal focus traps, retained UI trees, a full event dispatch system, a compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ## Current Build Shape
 
@@ -58,7 +59,7 @@ The current CMake project defines reusable SDK/runtime-style targets and one san
 - `greenfield_core`: interface target for core value types.
 - `greenfield_render`: interface target for renderer-neutral render commands and renderer interfaces.
 - `greenfield_render_fast2d`: Fast2D diagnostic/headless renderer backend foundation.
-- `greenfield_ui`: UI context, `UiId` identity, layout, style, focus/capture groundwork, and widget basics.
+- `greenfield_ui`: UI context, `UiId` identity, layout, style, focus/capture groundwork, and immediate widget basics including Checkbox and Toggle/Switch stateful controls.
 - `greenfield_platform`: interface target for platform abstractions.
 - `greenfield_sdl_platform`: SDL platform and startup presenter implementation.
 - `greenfield_render_webgpu`: Dawn/WebGPU renderer backend with backend-local FreeType text rendering.

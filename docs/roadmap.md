@@ -54,13 +54,23 @@ M5 does not yet add generated projects, CLI behavior, install rules, package/exp
 
 ## M6A
 
-M6A is the product-quality UI runtime foundation before richer controls.
+M6A is the product-quality UI runtime foundation before stateful controls.
 
 Current M6A work includes renderer-neutral and platform-neutral `UiId` control identity, internal normalization of existing immediate UI string names into `UiId` for runtime state, clearer `UiContext` persistent/per-frame state boundaries, minimal persistent focus state, generalized active-control capture state, and per-frame mouse press/release consumption so overlapping immediate buttons cannot claim the same gesture.
 
 The immediate UI programming model remains intact. Existing button behavior, scroll panels, layout, clipping, text command emission, renderer selection, Fast2D diagnostic behavior, and WebGPU sandbox behavior are preserved.
 
-M6A does not add keyboard navigation, text input, IME, clipboard, selection, accessibility, retained UI trees, a full event dispatch system, modal focus traps, new control families, compositor work, mixed-surface composition, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, Skia, Python bindings, or hot reload.
+M6A does not add keyboard navigation, text input, IME, clipboard, selection, accessibility, retained UI trees, a full event dispatch system, modal focus traps, stateful controls, compositor work, mixed-surface composition, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, Skia, Python bindings, or hot reload.
+
+## M6B
+
+M6B is the first stateful controls milestone.
+
+Current M6B work validates the existing Checkbox as complete enough for this milestone and adds Toggle/Switch as a new immediate-mode stateful control. Checkbox and Toggle both use `UiId`-keyed persistent boolean state in `UiContext`, return `true` only when the current frame changes that state, use active-control capture and per-frame mouse press/release consumption, and emit renderer-neutral render commands.
+
+Checkbox and Toggle state is independent for different `UiId`s. Matching names intentionally share the same `UiId`-keyed boolean state, including across Checkbox and Toggle. Existing Button behavior, scroll panels, layout, clipping, render command behavior, renderer selection, Fast2D diagnostic behavior, and WebGPU sandbox behavior are preserved. M6B does not modify sandbox or runtime renderer behavior.
+
+M6B does not add sliders, tabs, dropdowns, modals, toasts, tooltips, keyboard navigation, text entry, IME, clipboard, selection, accessibility, modal focus traps, a retained UI tree, a full event dispatch system, compositor work, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ## v0.1 Direction
 
@@ -109,4 +119,4 @@ M6A does not add keyboard navigation, text input, IME, clipboard, selection, acc
 - Windows-specific export workflow implementation
 - Keyboard navigation, text input, IME, clipboard, selection, and accessibility
 - Retained UI tree or full UI event dispatch system
-- Broad product-quality UI control set
+- Broad product-quality UI control set beyond the current Checkbox and Toggle/Switch foundation
