@@ -222,6 +222,147 @@ namespace
            PixelMatches(renderer, 0U, 0U, Color{}) && PixelMatches(renderer, 3U, 3U, Color{});
 }
 
+[[nodiscard]] bool TestZeroCornerRadiusPreservesPlainRectangleFill()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.2f, 0.4f, 0.6f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    fillColor,
+                                    0.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 1U, fillColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor);
+}
+
+[[nodiscard]] bool TestPositiveCornerRadiusLeavesExtremeCornersUntouched()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.9f, 0.1f, 0.2f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    fillColor,
+                                    2.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, Color{}) && PixelMatches(renderer, 4U, 0U, Color{}) &&
+           PixelMatches(renderer, 0U, 4U, Color{}) && PixelMatches(renderer, 4U, 4U, Color{});
+}
+
+[[nodiscard]] bool TestPositiveCornerRadiusFillsCenterAndBodyPixels()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.2f, 0.8f, 0.3f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    fillColor,
+                                    2.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 2U, fillColor) && PixelMatches(renderer, 2U, 0U, fillColor) &&
+           PixelMatches(renderer, 0U, 2U, fillColor) && PixelMatches(renderer, 1U, 0U, fillColor);
+}
+
+[[nodiscard]] bool TestRoundedFillUsesSourceOverAlphaBlending()
+{
+    using namespace greenfield;
+
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    Color{0.0f, 0.0f, 1.0f, 1.0f});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    Color{1.0f, 0.0f, 0.0f, 0.5f},
+                                    2.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 2U, 2U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
+           PixelMatches(renderer, 0U, 0U, Color{0.0f, 0.0f, 1.0f, 1.0f});
+}
+
+[[nodiscard]] bool TestRoundedFillRespectsClip()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.2f, 0.7f, 0.9f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.PushClip(Rect{.position = Vec2{2.0f, 1.0f}, .size = Vec2{2.0f, 2.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    fillColor,
+                                    2.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 1U, fillColor) && PixelMatches(renderer, 3U, 2U, fillColor) &&
+           PixelMatches(renderer, 1U, 1U, Color{}) && PixelMatches(renderer, 4U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestLargeCornerRadiusOnSmallRectangleIsDeterministic()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.6f, 0.4f, 0.1f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{2.0f, 1.0f}},
+                                    fillColor,
+                                    10.0f);
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{2.0f, 2.0f}, .size = Vec2{1.0f, 1.0f}},
+                                    fillColor,
+                                    10.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 0U, fillColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor) && PixelMatches(renderer, 0U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestRoundedFillWithBorderKeepsHardEdgedBorder()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.1f, 0.3f, 0.8f, 1.0f};
+    const Color borderColor{0.9f, 0.1f, 0.1f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{5.0f, 5.0f}},
+                                    fillColor,
+                                    2.0f,
+                                    borderColor,
+                                    1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, borderColor) && PixelMatches(renderer, 4U, 4U, borderColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor);
+}
+
 [[nodiscard]] bool TestFillRectanglePreservesStyleMetadataAndRasterizesBorder()
 {
     using namespace greenfield;
@@ -641,6 +782,12 @@ int main()
         !TestClipUnderflowIsSafeAndObservable() || !TestDrawTextIsDeferred() ||
         !TestBeginFrameResetsPreparedState() || !TestEndFrameCompletesWithoutPlatformDependencies() ||
         !TestFillRectangleWritesRasterPixels() || !TestFillRectanglePreservesStyleMetadataAndRasterizesBorder() ||
+        !TestZeroCornerRadiusPreservesPlainRectangleFill() ||
+        !TestPositiveCornerRadiusLeavesExtremeCornersUntouched() ||
+        !TestPositiveCornerRadiusFillsCenterAndBodyPixels() ||
+        !TestRoundedFillUsesSourceOverAlphaBlending() || !TestRoundedFillRespectsClip() ||
+        !TestLargeCornerRadiusOnSmallRectangleIsDeterministic() ||
+        !TestRoundedFillWithBorderKeepsHardEdgedBorder() ||
         !TestLaterFillRectangleOverridesEarlierRasterPixels() || !TestClipLimitsRasterPixels() ||
         !TestOpaqueFillStillReplacesRasterPixels() || !TestTransparentFillLeavesRasterPixelsUnchanged() ||
         !TestPartialAlphaFillBlendsOverOpaqueDestination() ||

@@ -52,6 +52,7 @@ private:
     void RasterizePreparedFillOperations();
     void RasterizeFillRectangle(const Fast2DPreparedFillOperation& fillOperation);
     void RasterizeFillInterior(const Fast2DPreparedFillOperation& fillOperation);
+    void RasterizeRoundedFillInterior(const Fast2DPreparedFillOperation& fillOperation);
     void RasterizeHardEdgedBorder(const Fast2DPreparedFillOperation& fillOperation);
     void ClearRasterTarget();
     void ClearFrameState();

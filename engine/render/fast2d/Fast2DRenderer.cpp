@@ -72,6 +72,61 @@ struct PixelBounds
            y < outerBounds.top + borderThickness || y >= outerBounds.bottom - borderThickness;
 }
 
+[[nodiscard]] float ClampCornerRadius(const Rect& rectangle, float cornerRadius) noexcept
+{
+    if (!std::isfinite(cornerRadius) || cornerRadius <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    return std::min(cornerRadius, std::min(rectangle.size.x, rectangle.size.y) * 0.5f);
+}
+
+[[nodiscard]] bool IsPixelInsideRoundedRectangle(std::size_t x, std::size_t y, const Rect& rectangle,
+                                                 float cornerRadius) noexcept
+{
+    const float radius = ClampCornerRadius(rectangle, cornerRadius);
+    if (radius <= 0.0f)
+    {
+        return true;
+    }
+
+    const float pixelCenterX = static_cast<float>(x) + 0.5f;
+    const float pixelCenterY = static_cast<float>(y) + 0.5f;
+    const float left = rectangle.position.x;
+    const float top = rectangle.position.y;
+    const float right = rectangle.position.x + rectangle.size.x;
+    const float bottom = rectangle.position.y + rectangle.size.y;
+    const float leftCenter = left + radius;
+    const float rightCenter = right - radius;
+    const float topCenter = top + radius;
+    const float bottomCenter = bottom - radius;
+    float nearestCornerCenterX = pixelCenterX;
+    float nearestCornerCenterY = pixelCenterY;
+
+    if (pixelCenterX < leftCenter)
+    {
+        nearestCornerCenterX = leftCenter;
+    }
+    else if (pixelCenterX > rightCenter)
+    {
+        nearestCornerCenterX = rightCenter;
+    }
+
+    if (pixelCenterY < topCenter)
+    {
+        nearestCornerCenterY = topCenter;
+    }
+    else if (pixelCenterY > bottomCenter)
+    {
+        nearestCornerCenterY = bottomCenter;
+    }
+
+    const float distanceX = pixelCenterX - nearestCornerCenterX;
+    const float distanceY = pixelCenterY - nearestCornerCenterY;
+    return distanceX * distanceX + distanceY * distanceY <= radius * radius;
+}
+
 [[nodiscard]] Color BlendSourceOver(Color sourceColor, Color destinationColor) noexcept
 {
     const float sourceAlpha = std::clamp(sourceColor.alpha, 0.0f, 1.0f);
@@ -276,13 +331,20 @@ void Fast2DRenderer::RasterizePreparedFillOperations()
 
 void Fast2DRenderer::RasterizeFillRectangle(const Fast2DPreparedFillOperation& fillOperation)
 {
-    // Fast2D keeps rounded shape metadata for later work, but rasterizes hard-edged rectangles for now.
     if (_rasterTargetWidth == 0U || _rasterTargetHeight == 0U)
     {
         return;
     }
 
-    RasterizeFillInterior(fillOperation);
+    if (ClampCornerRadius(fillOperation.rectangle, fillOperation.cornerRadius) <= 0.0f)
+    {
+        RasterizeFillInterior(fillOperation);
+    }
+    else
+    {
+        RasterizeRoundedFillInterior(fillOperation);
+    }
+
     RasterizeHardEdgedBorder(fillOperation);
 }
 
@@ -304,6 +366,35 @@ void Fast2DRenderer::RasterizeFillInterior(const Fast2DPreparedFillOperation& fi
     {
         for (std::size_t x = bounds.left; x < bounds.right; ++x)
         {
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(fillOperation.fillColor, destinationPixel);
+        }
+    }
+}
+
+void Fast2DRenderer::RasterizeRoundedFillInterior(const Fast2DPreparedFillOperation& fillOperation)
+{
+    const Rect rasterRectangle = ClipToRasterAndOperationClip(fillOperation.rectangle,
+                                                              fillOperation,
+                                                              _rasterTargetWidth,
+                                                              _rasterTargetHeight);
+
+    if (!HasPositiveArea(rasterRectangle))
+    {
+        return;
+    }
+
+    const PixelBounds bounds = MakePixelBounds(rasterRectangle);
+
+    for (std::size_t y = bounds.top; y < bounds.bottom; ++y)
+    {
+        for (std::size_t x = bounds.left; x < bounds.right; ++x)
+        {
+            if (!IsPixelInsideRoundedRectangle(x, y, fillOperation.rectangle, fillOperation.cornerRadius))
+            {
+                continue;
+            }
+
             Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
             destinationPixel = BlendSourceOver(fillOperation.fillColor, destinationPixel);
         }
