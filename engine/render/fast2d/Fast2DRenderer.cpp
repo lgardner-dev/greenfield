@@ -72,6 +72,20 @@ struct PixelBounds
            y < outerBounds.top + borderThickness || y >= outerBounds.bottom - borderThickness;
 }
 
+[[nodiscard]] Rect InsetRectangle(const Rect& rectangle, float inset) noexcept
+{
+    return Rect{
+        .position = Vec2{
+            .x = rectangle.position.x + inset,
+            .y = rectangle.position.y + inset,
+        },
+        .size = Vec2{
+            .x = std::max(0.0f, rectangle.size.x - inset * 2.0f),
+            .y = std::max(0.0f, rectangle.size.y - inset * 2.0f),
+        },
+    };
+}
+
 [[nodiscard]] float ClampCornerRadius(const Rect& rectangle, float cornerRadius) noexcept
 {
     if (!std::isfinite(cornerRadius) || cornerRadius <= 0.0f)
@@ -125,6 +139,24 @@ struct PixelBounds
     const float distanceX = pixelCenterX - nearestCornerCenterX;
     const float distanceY = pixelCenterY - nearestCornerCenterY;
     return distanceX * distanceX + distanceY * distanceY <= radius * radius;
+}
+
+[[nodiscard]] bool IsPixelInsideRoundedBorder(std::size_t x, std::size_t y, const Rect& outerRectangle,
+                                              float outerCornerRadius, float borderThickness) noexcept
+{
+    if (!IsPixelInsideRoundedRectangle(x, y, outerRectangle, outerCornerRadius))
+    {
+        return false;
+    }
+
+    const Rect innerRectangle = InsetRectangle(outerRectangle, borderThickness);
+    if (!HasPositiveArea(innerRectangle))
+    {
+        return true;
+    }
+
+    const float innerCornerRadius = std::max(0.0f, outerCornerRadius - borderThickness);
+    return !IsPixelInsideRoundedRectangle(x, y, innerRectangle, innerCornerRadius);
 }
 
 [[nodiscard]] Color BlendSourceOver(Color sourceColor, Color destinationColor) noexcept
@@ -348,7 +380,7 @@ void Fast2DRenderer::RasterizeFillRectangle(const Fast2DPreparedFillOperation& f
         RasterizeRoundedFillInterior(fillOperation);
     }
 
-    RasterizeHardEdgedBorder(fillOperation);
+    RasterizeBorder(fillOperation);
 }
 
 void Fast2DRenderer::RasterizeFillInterior(const Fast2DPreparedFillOperation& fillOperation)
@@ -404,13 +436,24 @@ void Fast2DRenderer::RasterizeRoundedFillInterior(const Fast2DPreparedFillOperat
     }
 }
 
-void Fast2DRenderer::RasterizeHardEdgedBorder(const Fast2DPreparedFillOperation& fillOperation)
+void Fast2DRenderer::RasterizeBorder(const Fast2DPreparedFillOperation& fillOperation)
 {
     if (!std::isfinite(fillOperation.borderThickness) || fillOperation.borderThickness <= 0.0f)
     {
         return;
     }
 
+    if (ClampCornerRadius(fillOperation.rectangle, fillOperation.cornerRadius) <= 0.0f)
+    {
+        RasterizeHardEdgedBorder(fillOperation);
+        return;
+    }
+
+    RasterizeRoundedBorder(fillOperation);
+}
+
+void Fast2DRenderer::RasterizeHardEdgedBorder(const Fast2DPreparedFillOperation& fillOperation)
+{
     const Rect outerRectangle = ClipToRasterAndOperationClip(fillOperation.rectangle,
                                                              fillOperation,
                                                              _rasterTargetWidth,
@@ -436,6 +479,39 @@ void Fast2DRenderer::RasterizeHardEdgedBorder(const Fast2DPreparedFillOperation&
         for (std::size_t x = clippedBounds.left; x < clippedBounds.right; ++x)
         {
             if (!IsBorderPixel(x, y, outerBounds, borderThickness))
+            {
+                continue;
+            }
+
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(fillOperation.borderColor, destinationPixel);
+        }
+    }
+}
+
+void Fast2DRenderer::RasterizeRoundedBorder(const Fast2DPreparedFillOperation& fillOperation)
+{
+    const Rect outerRectangle = ClipToRasterAndOperationClip(fillOperation.rectangle,
+                                                             fillOperation,
+                                                             _rasterTargetWidth,
+                                                             _rasterTargetHeight);
+    if (!HasPositiveArea(outerRectangle))
+    {
+        return;
+    }
+
+    const PixelBounds clippedBounds = MakePixelBounds(outerRectangle);
+    const float borderThickness = static_cast<float>(std::ceil(fillOperation.borderThickness));
+
+    for (std::size_t y = clippedBounds.top; y < clippedBounds.bottom; ++y)
+    {
+        for (std::size_t x = clippedBounds.left; x < clippedBounds.right; ++x)
+        {
+            if (!IsPixelInsideRoundedBorder(x,
+                                            y,
+                                            fillOperation.rectangle,
+                                            fillOperation.cornerRadius,
+                                            borderThickness))
             {
                 continue;
             }
