@@ -41,7 +41,8 @@ namespace
 [[nodiscard]] bool TestInputDefaults()
 {
     const greenfield::InputState inputState{};
-    return inputState.verticalScrollDelta == 0.0f;
+    return inputState.verticalScrollDelta == 0.0f && !inputState.tabPressed && !inputState.shiftTabPressed &&
+           !inputState.enterPressed && !inputState.spacePressed;
 }
 
 [[nodiscard]] bool TestSurfaceIdDefaultsToInvalid()

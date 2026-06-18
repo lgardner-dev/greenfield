@@ -14,6 +14,7 @@ namespace
 {
 
 std::size_t SdlVideoUserCount = 0;
+constexpr unsigned short ShiftModifierMask = SDL_KMOD_SHIFT;
 
 void InitializeSdlVideo()
 {
@@ -114,6 +115,10 @@ void SdlWindow::PollEvents()
         {
             HandleMouseWheel(event.wheel.mouse_x, event.wheel.mouse_y, event.wheel.y);
         }
+        else if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == SDL_GetWindowID(_window.get()))
+        {
+            HandleKeyDown(event.key.key, event.key.mod, event.key.repeat);
+        }
     }
 
     UpdateWindowSize();
@@ -205,6 +210,10 @@ void SdlWindow::BeginInputFrame()
     _inputState.leftMouseButtonPressed = false;
     _inputState.leftMouseButtonReleased = false;
     _inputState.verticalScrollDelta = 0.0f;
+    _inputState.tabPressed = false;
+    _inputState.shiftTabPressed = false;
+    _inputState.enterPressed = false;
+    _inputState.spacePressed = false;
 }
 
 void SdlWindow::HandleMouseMotion(float x, float y)
@@ -248,6 +257,37 @@ void SdlWindow::HandleMouseWheel(float x, float y, float verticalScrollDelta)
 {
     _inputState.mousePosition = Vec2{x, y};
     _inputState.verticalScrollDelta += verticalScrollDelta;
+}
+
+void SdlWindow::HandleKeyDown(unsigned int key, unsigned short modifiers, bool isRepeat)
+{
+    if (isRepeat)
+    {
+        return;
+    }
+
+    if (key == SDLK_TAB)
+    {
+        if ((modifiers & ShiftModifierMask) != 0U)
+        {
+            _inputState.shiftTabPressed = true;
+            return;
+        }
+
+        _inputState.tabPressed = true;
+        return;
+    }
+
+    if (key == SDLK_RETURN)
+    {
+        _inputState.enterPressed = true;
+        return;
+    }
+
+    if (key == SDLK_SPACE)
+    {
+        _inputState.spacePressed = true;
+    }
 }
 
 void SdlWindow::UpdateWindowSize()
