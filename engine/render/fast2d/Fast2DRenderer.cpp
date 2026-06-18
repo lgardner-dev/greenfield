@@ -26,6 +26,52 @@ namespace
     };
 }
 
+struct PixelBounds
+{
+    std::size_t left{0};
+    std::size_t top{0};
+    std::size_t right{0};
+    std::size_t bottom{0};
+};
+
+[[nodiscard]] PixelBounds MakePixelBounds(const Rect& rectangle) noexcept
+{
+    return PixelBounds{
+        .left = static_cast<std::size_t>(std::ceil(rectangle.position.x)),
+        .top = static_cast<std::size_t>(std::ceil(rectangle.position.y)),
+        .right = static_cast<std::size_t>(std::ceil(rectangle.position.x + rectangle.size.x)),
+        .bottom = static_cast<std::size_t>(std::ceil(rectangle.position.y + rectangle.size.y)),
+    };
+}
+
+[[nodiscard]] Rect ClipToRasterAndOperationClip(const Rect& rectangle,
+                                                const Fast2DPreparedFillOperation& fillOperation,
+                                                std::size_t rasterTargetWidth,
+                                                std::size_t rasterTargetHeight) noexcept
+{
+    Rect clippedRectangle = IntersectRectangles(rectangle, MakeRasterBounds(rasterTargetWidth, rasterTargetHeight));
+    if (fillOperation.hasClip)
+    {
+        clippedRectangle = IntersectRectangles(clippedRectangle, fillOperation.clipRectangle);
+    }
+
+    return clippedRectangle;
+}
+
+[[nodiscard]] bool IsBorderPixel(std::size_t x, std::size_t y, const PixelBounds& outerBounds,
+                                 std::size_t borderThickness) noexcept
+{
+    const std::size_t width = outerBounds.right - outerBounds.left;
+    const std::size_t height = outerBounds.bottom - outerBounds.top;
+    if (borderThickness * 2U >= width || borderThickness * 2U >= height)
+    {
+        return true;
+    }
+
+    return x < outerBounds.left + borderThickness || x >= outerBounds.right - borderThickness ||
+           y < outerBounds.top + borderThickness || y >= outerBounds.bottom - borderThickness;
+}
+
 [[nodiscard]] Color BlendSourceOver(Color sourceColor, Color destinationColor) noexcept
 {
     const float sourceAlpha = std::clamp(sourceColor.alpha, 0.0f, 1.0f);
@@ -230,37 +276,78 @@ void Fast2DRenderer::RasterizePreparedFillOperations()
 
 void Fast2DRenderer::RasterizeFillRectangle(const Fast2DPreparedFillOperation& fillOperation)
 {
-    // Fast2D preserves shape styling for later backend work, but rasterizes only the plain fill for now.
+    // Fast2D keeps rounded shape metadata for later work, but rasterizes hard-edged rectangles for now.
     if (_rasterTargetWidth == 0U || _rasterTargetHeight == 0U)
     {
         return;
     }
 
-    Rect rasterRectangle = IntersectRectangles(fillOperation.rectangle,
-                                               MakeRasterBounds(_rasterTargetWidth, _rasterTargetHeight));
-    if (fillOperation.hasClip)
-    {
-        rasterRectangle = IntersectRectangles(rasterRectangle, fillOperation.clipRectangle);
-    }
+    RasterizeFillInterior(fillOperation);
+    RasterizeHardEdgedBorder(fillOperation);
+}
+
+void Fast2DRenderer::RasterizeFillInterior(const Fast2DPreparedFillOperation& fillOperation)
+{
+    const Rect rasterRectangle = ClipToRasterAndOperationClip(fillOperation.rectangle,
+                                                              fillOperation,
+                                                              _rasterTargetWidth,
+                                                              _rasterTargetHeight);
 
     if (!HasPositiveArea(rasterRectangle))
     {
         return;
     }
 
-    const auto left = static_cast<std::size_t>(std::ceil(rasterRectangle.position.x));
-    const auto top = static_cast<std::size_t>(std::ceil(rasterRectangle.position.y));
-    const auto right =
-        static_cast<std::size_t>(std::ceil(rasterRectangle.position.x + rasterRectangle.size.x));
-    const auto bottom =
-        static_cast<std::size_t>(std::ceil(rasterRectangle.position.y + rasterRectangle.size.y));
+    const PixelBounds bounds = MakePixelBounds(rasterRectangle);
 
-    for (std::size_t y = top; y < bottom; ++y)
+    for (std::size_t y = bounds.top; y < bounds.bottom; ++y)
     {
-        for (std::size_t x = left; x < right; ++x)
+        for (std::size_t x = bounds.left; x < bounds.right; ++x)
         {
             Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
             destinationPixel = BlendSourceOver(fillOperation.fillColor, destinationPixel);
+        }
+    }
+}
+
+void Fast2DRenderer::RasterizeHardEdgedBorder(const Fast2DPreparedFillOperation& fillOperation)
+{
+    if (!std::isfinite(fillOperation.borderThickness) || fillOperation.borderThickness <= 0.0f)
+    {
+        return;
+    }
+
+    const Rect outerRectangle = ClipToRasterAndOperationClip(fillOperation.rectangle,
+                                                             fillOperation,
+                                                             _rasterTargetWidth,
+                                                             _rasterTargetHeight);
+    if (!HasPositiveArea(outerRectangle))
+    {
+        return;
+    }
+
+    const Rect unclippedOuterRectangle =
+        IntersectRectangles(fillOperation.rectangle, MakeRasterBounds(_rasterTargetWidth, _rasterTargetHeight));
+    if (!HasPositiveArea(unclippedOuterRectangle))
+    {
+        return;
+    }
+
+    const PixelBounds clippedBounds = MakePixelBounds(outerRectangle);
+    const PixelBounds outerBounds = MakePixelBounds(unclippedOuterRectangle);
+    const auto borderThickness = static_cast<std::size_t>(std::ceil(fillOperation.borderThickness));
+
+    for (std::size_t y = clippedBounds.top; y < clippedBounds.bottom; ++y)
+    {
+        for (std::size_t x = clippedBounds.left; x < clippedBounds.right; ++x)
+        {
+            if (!IsBorderPixel(x, y, outerBounds, borderThickness))
+            {
+                continue;
+            }
+
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(fillOperation.borderColor, destinationPixel);
         }
     }
 }

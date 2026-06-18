@@ -222,7 +222,7 @@ namespace
            PixelMatches(renderer, 0U, 0U, Color{}) && PixelMatches(renderer, 3U, 3U, Color{});
 }
 
-[[nodiscard]] bool TestOptionalFillFieldsAreDeferredByRasterPath()
+[[nodiscard]] bool TestFillRectanglePreservesStyleMetadataAndRasterizesBorder()
 {
     using namespace greenfield;
     using greenfield::tests::ColorsMatch;
@@ -244,8 +244,8 @@ namespace
     const auto fillOperations = renderer.PreparedFillOperations();
     return renderer.PreparedFillOperationCount() == 1U && fillOperations[0].cornerRadius == 2.0f &&
            ColorsMatch(fillOperations[0].borderColor, borderColor) && fillOperations[0].borderThickness == 1.0f &&
-           PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 0U, fillColor) &&
-           PixelMatches(renderer, 2U, 2U, fillColor) && PixelMatches(renderer, 3U, 3U, fillColor);
+           PixelMatches(renderer, 0U, 0U, borderColor) && PixelMatches(renderer, 1U, 0U, borderColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor) && PixelMatches(renderer, 3U, 3U, borderColor);
 }
 
 [[nodiscard]] bool TestLaterFillRectangleOverridesEarlierRasterPixels()
@@ -361,6 +361,155 @@ namespace
     return PixelNearlyMatches(renderer, 1U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
            PixelMatches(renderer, 0U, 0U, destinationColor) &&
            PixelMatches(renderer, 2U, 2U, destinationColor);
+}
+
+[[nodiscard]] bool TestZeroBorderThicknessPreservesFillOnlyRasterPath()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.1f, 0.3f, 0.8f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    fillColor,
+                                    0.0f,
+                                    Color{1.0f, 0.0f, 0.0f, 1.0f},
+                                    0.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 1U, fillColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor);
+}
+
+[[nodiscard]] bool TestNegativeBorderThicknessPreservesFillOnlyRasterPath()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.1f, 0.3f, 0.8f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    fillColor,
+                                    0.0f,
+                                    Color{1.0f, 0.0f, 0.0f, 1.0f},
+                                    -1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 1U, fillColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor);
+}
+
+[[nodiscard]] bool TestBorderDrawsAfterFill()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color borderColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{4U, 4U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{4.0f, 4.0f}},
+                                    fillColor,
+                                    0.0f,
+                                    borderColor,
+                                    1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, borderColor) && PixelMatches(renderer, 3U, 2U, borderColor) &&
+           PixelMatches(renderer, 1U, 1U, fillColor);
+}
+
+[[nodiscard]] bool TestTransparentBorderLeavesFillUnchanged()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    fillColor,
+                                    0.0f,
+                                    Color{1.0f, 0.0f, 0.0f, 0.0f},
+                                    1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, fillColor) && PixelMatches(renderer, 1U, 1U, fillColor) &&
+           PixelMatches(renderer, 2U, 2U, fillColor);
+}
+
+[[nodiscard]] bool TestPartialAlphaBorderBlendsOverFill()
+{
+    using namespace greenfield;
+
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}},
+                                    Color{0.0f, 0.0f, 1.0f, 1.0f},
+                                    0.0f,
+                                    Color{1.0f, 0.0f, 0.0f, 0.5f},
+                                    1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 0U, 0U, Color{0.5f, 0.0f, 0.5f, 1.0f}) &&
+           PixelMatches(renderer, 1U, 1U, Color{0.0f, 0.0f, 1.0f, 1.0f});
+}
+
+[[nodiscard]] bool TestBorderRespectsClip()
+{
+    using namespace greenfield;
+
+    const Color fillColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color borderColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{4U, 4U};
+    RenderCommandList renderCommands;
+    renderCommands.PushClip(Rect{.position = Vec2{1.0f, 0.0f}, .size = Vec2{3.0f, 4.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{4.0f, 4.0f}},
+                                    fillColor,
+                                    0.0f,
+                                    borderColor,
+                                    1.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, Color{}) && PixelMatches(renderer, 1U, 0U, borderColor) &&
+           PixelMatches(renderer, 1U, 1U, fillColor) && PixelMatches(renderer, 3U, 1U, borderColor);
+}
+
+[[nodiscard]] bool TestLargeBorderThicknessCoversSmallRectangleDeterministically()
+{
+    using namespace greenfield;
+
+    const Color borderColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}},
+                                    Color{0.0f, 0.0f, 1.0f, 1.0f},
+                                    0.0f,
+                                    borderColor,
+                                    4.0f);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, borderColor) && PixelMatches(renderer, 0U, 0U, Color{}) &&
+           PixelMatches(renderer, 2U, 2U, Color{});
 }
 
 [[nodiscard]] bool TestClipLimitsRasterPixels()
@@ -491,12 +640,16 @@ int main()
         !TestMultipleFillRectanglesArePreparedInOrder() || !TestClipStackAffectsPreparedFillOperations() ||
         !TestClipUnderflowIsSafeAndObservable() || !TestDrawTextIsDeferred() ||
         !TestBeginFrameResetsPreparedState() || !TestEndFrameCompletesWithoutPlatformDependencies() ||
-        !TestFillRectangleWritesRasterPixels() || !TestOptionalFillFieldsAreDeferredByRasterPath() ||
+        !TestFillRectangleWritesRasterPixels() || !TestFillRectanglePreservesStyleMetadataAndRasterizesBorder() ||
         !TestLaterFillRectangleOverridesEarlierRasterPixels() || !TestClipLimitsRasterPixels() ||
         !TestOpaqueFillStillReplacesRasterPixels() || !TestTransparentFillLeavesRasterPixelsUnchanged() ||
         !TestPartialAlphaFillBlendsOverOpaqueDestination() ||
         !TestPartialAlphaFillBlendsAgainstExistingRasterPixels() ||
-        !TestAlphaBlendedFillStillHonorsClip() || !TestPopClipRestoresPreviousRasterClip() ||
+        !TestAlphaBlendedFillStillHonorsClip() || !TestZeroBorderThicknessPreservesFillOnlyRasterPath() ||
+        !TestNegativeBorderThicknessPreservesFillOnlyRasterPath() || !TestBorderDrawsAfterFill() ||
+        !TestTransparentBorderLeavesFillUnchanged() || !TestPartialAlphaBorderBlendsOverFill() ||
+        !TestBorderRespectsClip() || !TestLargeBorderThicknessCoversSmallRectangleDeterministically() ||
+        !TestPopClipRestoresPreviousRasterClip() ||
         !TestOutOfBoundsRectanglesAreClippedToRasterTarget() ||
         !TestClipOutsideRasterTargetIsClippedSafely() || !TestDrawTextDoesNotAlterRasterPixels() ||
         !TestBeginFrameResetsRasterPixels())
