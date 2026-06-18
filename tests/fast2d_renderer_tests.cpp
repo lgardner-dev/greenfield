@@ -44,8 +44,7 @@ namespace
     RenderCommandList firstCommands;
     RenderCommandList secondCommands;
     firstCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{20.0f, 20.0f}}, Color{});
-    secondCommands.AddText("Fast2D", Rect{.position = Vec2{2.0f, 4.0f}, .size = Vec2{80.0f, 20.0f}},
-                           14.0f, Color{});
+    secondCommands.AddText("Fast2D", Rect{.position = Vec2{2.0f, 4.0f}, .size = Vec2{80.0f, 20.0f}}, 14.0f, Color{});
 
     renderer.Submit(firstCommands);
     renderer.Submit(secondCommands);
@@ -149,8 +148,7 @@ namespace
 
     Fast2DRenderer renderer;
     RenderCommandList renderCommands;
-    renderCommands.AddText("Deferred", Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{80.0f, 20.0f}}, 14.0f,
-                           Color{});
+    renderCommands.AddText("Deferred", Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{80.0f, 20.0f}}, 14.0f, Color{});
 
     renderer.Submit(renderCommands);
 
@@ -164,8 +162,7 @@ namespace
     Fast2DRenderer renderer;
     RenderCommandList renderCommands;
     renderCommands.PopClip();
-    renderCommands.AddText("Deferred", Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{80.0f, 20.0f}}, 14.0f,
-                           Color{});
+    renderCommands.AddText("Deferred", Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{80.0f, 20.0f}}, 14.0f, Color{});
     renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{10.0f, 10.0f}}, Color{});
 
     renderer.Submit(renderCommands);
@@ -219,7 +216,10 @@ namespace
     Fast2DRenderer renderer{4U, 4U};
     RenderCommandList renderCommands;
     renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{4.0f, 4.0f}},
-                                    fillColor, 2.0f, borderColor, 1.0f);
+                                    fillColor,
+                                    2.0f,
+                                    borderColor,
+                                    1.0f);
 
     renderer.BeginFrame();
     renderer.Submit(renderCommands);
@@ -338,8 +338,7 @@ namespace
 
     Fast2DRenderer renderer{3U, 3U};
     RenderCommandList renderCommands;
-    renderCommands.AddText("Deferred", Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}}, 14.0f,
-                           Color{0.9f, 0.9f, 0.2f, 1.0f});
+    renderCommands.AddText("Deferred", Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{3.0f, 3.0f}}, 14.0f, Color{0.9f, 0.9f, 0.2f, 1.0f});
 
     renderer.BeginFrame();
     renderer.Submit(renderCommands);

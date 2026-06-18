@@ -658,6 +658,31 @@ void UiContext::ToggleBooleanState(const UiId& controlId)
     SetBooleanState(controlId, !GetBooleanState(controlId));
 }
 
+float UiContext::GetNumericState(const UiId& controlId, float defaultValue) const
+{
+    const auto numericState = _numericStates.find(controlId);
+    if (numericState == _numericStates.end())
+    {
+        return defaultValue;
+    }
+
+    return numericState->second;
+}
+
+void UiContext::SetNumericState(const UiId& controlId, float value)
+{
+    _numericStates[controlId] = value;
+}
+
+float UiContext::GetClampedNumericState(const UiId& controlId, float defaultValue, float minimum, float maximum)
+{
+    const float normalizedMinimum = std::min(minimum, maximum);
+    const float normalizedMaximum = std::max(minimum, maximum);
+    const float value = ClampLayoutValue(GetNumericState(controlId, defaultValue), normalizedMinimum, normalizedMaximum);
+    SetNumericState(controlId, value);
+    return value;
+}
+
 Color UiContext::GetButtonColor(const UiId& buttonId, const Rect& bounds, const ButtonStyle& buttonStyle) const
 {
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);

@@ -180,6 +180,9 @@ private:
     [[nodiscard]] bool GetBooleanState(const UiId& controlId) const;
     void SetBooleanState(const UiId& controlId, bool value);
     void ToggleBooleanState(const UiId& controlId);
+    [[nodiscard]] float GetNumericState(const UiId& controlId, float defaultValue) const;
+    void SetNumericState(const UiId& controlId, float value);
+    [[nodiscard]] float GetClampedNumericState(const UiId& controlId, float defaultValue, float minimum, float maximum);
     [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
     [[nodiscard]] Color GetCheckboxBoxColor(const UiId& checkboxId, const Rect& bounds,
@@ -201,6 +204,7 @@ private:
     std::optional<UiId> _activeControlId{};
     std::optional<UiId> _focusedControlId{};
     std::unordered_map<UiId, bool, UiIdHash> _booleanStates{};
+    std::unordered_map<UiId, float, UiIdHash> _numericStates{};
     std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
 
     // Per-frame state is rebuilt by BeginFrame from the current layout and input snapshot.

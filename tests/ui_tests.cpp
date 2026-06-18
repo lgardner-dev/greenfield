@@ -27,6 +27,22 @@ struct UiContextTestAccess
     {
         uiContext.ToggleBooleanState(controlId);
     }
+
+    [[nodiscard]] static float GetNumericState(const UiContext& uiContext, const UiId& controlId, float defaultValue)
+    {
+        return uiContext.GetNumericState(controlId, defaultValue);
+    }
+
+    static void SetNumericState(UiContext& uiContext, const UiId& controlId, float value)
+    {
+        uiContext.SetNumericState(controlId, value);
+    }
+
+    [[nodiscard]] static float GetClampedNumericState(UiContext& uiContext, const UiId& controlId,
+                                                      float defaultValue, float minimum, float maximum)
+    {
+        return uiContext.GetClampedNumericState(controlId, defaultValue, minimum, maximum);
+    }
 };
 
 } // namespace greenfield
@@ -1272,6 +1288,85 @@ namespace
            UiContextTestAccess::GetBooleanState(uiContext, secondControlId);
 }
 
+[[nodiscard]] bool TestNumericStateDefaultsToProvidedValue()
+{
+    using namespace greenfield;
+
+    const UiContext uiContext;
+    return UiContextTestAccess::GetNumericState(uiContext, MakeUiId("missing-numeric-control"), 0.35f) == 0.35f;
+}
+
+[[nodiscard]] bool TestNumericStatePersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId controlId = MakeUiId("persistent-numeric-control");
+    UiContextTestAccess::SetNumericState(uiContext, controlId, 0.75f);
+
+    uiContext.BeginFrame(MakeLayout());
+    const auto& firstCommands = uiContext.EndFrame();
+    if (!firstCommands.IsEmpty() || UiContextTestAccess::GetNumericState(uiContext, controlId, 0.0f) != 0.75f)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const auto& secondCommands = uiContext.EndFrame();
+    return secondCommands.IsEmpty() && UiContextTestAccess::GetNumericState(uiContext, controlId, 0.0f) == 0.75f;
+}
+
+[[nodiscard]] bool TestNumericStateIsIndependentPerUiId()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId firstControlId = MakeUiId("first-numeric-control");
+    const UiId secondControlId = MakeUiId("second-numeric-control");
+    UiContextTestAccess::SetNumericState(uiContext, firstControlId, 0.25f);
+    UiContextTestAccess::SetNumericState(uiContext, secondControlId, 0.80f);
+
+    return UiContextTestAccess::GetNumericState(uiContext, firstControlId, 0.0f) == 0.25f &&
+           UiContextTestAccess::GetNumericState(uiContext, secondControlId, 0.0f) == 0.80f;
+}
+
+[[nodiscard]] bool TestNumericStateCanBeOverwritten()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId controlId = MakeUiId("overwritten-numeric-control");
+    UiContextTestAccess::SetNumericState(uiContext, controlId, 0.20f);
+    UiContextTestAccess::SetNumericState(uiContext, controlId, 0.90f);
+
+    return UiContextTestAccess::GetNumericState(uiContext, controlId, 0.0f) == 0.90f;
+}
+
+[[nodiscard]] bool TestClampedNumericStateHandlesRanges()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId belowControlId = MakeUiId("below-range-numeric-control");
+    const UiId aboveControlId = MakeUiId("above-range-numeric-control");
+    const UiId reversedRangeControlId = MakeUiId("reversed-range-numeric-control");
+    const UiId degenerateRangeControlId = MakeUiId("degenerate-range-numeric-control");
+
+    UiContextTestAccess::SetNumericState(uiContext, belowControlId, -0.25f);
+    UiContextTestAccess::SetNumericState(uiContext, aboveControlId, 1.25f);
+    UiContextTestAccess::SetNumericState(uiContext, reversedRangeControlId, 12.0f);
+    UiContextTestAccess::SetNumericState(uiContext, degenerateRangeControlId, 8.0f);
+
+    return UiContextTestAccess::GetClampedNumericState(uiContext, belowControlId, 0.0f, 0.0f, 1.0f) == 0.0f &&
+           UiContextTestAccess::GetNumericState(uiContext, belowControlId, 0.5f) == 0.0f &&
+           UiContextTestAccess::GetClampedNumericState(uiContext, aboveControlId, 0.0f, 0.0f, 1.0f) == 1.0f &&
+           UiContextTestAccess::GetNumericState(uiContext, aboveControlId, 0.5f) == 1.0f &&
+           UiContextTestAccess::GetClampedNumericState(uiContext, reversedRangeControlId, 0.0f, 10.0f, 5.0f) == 10.0f &&
+           UiContextTestAccess::GetNumericState(uiContext, reversedRangeControlId, 0.0f) == 10.0f &&
+           UiContextTestAccess::GetClampedNumericState(uiContext, degenerateRangeControlId, 0.0f, 3.0f, 3.0f) == 3.0f &&
+           UiContextTestAccess::GetNumericState(uiContext, degenerateRangeControlId, 0.0f) == 3.0f;
+}
+
 [[nodiscard]] bool TestFocusIsIndependentFromActiveControlAndScrollState()
 {
     using namespace greenfield;
@@ -1349,7 +1444,10 @@ int main()
         !TestToggleRenderCommandsIncludeTrackKnobAndLabel() || !TestFocusDefaultsToEmpty() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
         !TestFocusPersistsAcrossFrames() || !TestBooleanStatePersistsAcrossFrames() ||
-        !TestBooleanStateIsIndependentPerUiId() || !TestFocusIsIndependentFromActiveControlAndScrollState())
+        !TestBooleanStateIsIndependentPerUiId() || !TestNumericStateDefaultsToProvidedValue() ||
+        !TestNumericStatePersistsAcrossFrames() || !TestNumericStateIsIndependentPerUiId() ||
+        !TestNumericStateCanBeOverwritten() || !TestClampedNumericStateHandlesRanges() ||
+        !TestFocusIsIndependentFromActiveControlAndScrollState())
     {
         return EXIT_FAILURE;
     }
