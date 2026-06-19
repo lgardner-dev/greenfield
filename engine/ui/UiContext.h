@@ -15,6 +15,21 @@
 namespace greenfield
 {
 
+enum class FocusVisualKind
+{
+    None,
+    OuterRing,
+};
+
+struct FocusStyle
+{
+    FocusVisualKind kind{FocusVisualKind::OuterRing};
+    Color color{0.92f, 0.96f, 1.0f, 0.95f};
+    float thickness{2.0f};
+    float outset{2.0f};
+    float cornerRadiusOffset{2.0f};
+};
+
 struct ButtonStyle
 {
     Color normal{0.34f, 0.60f, 0.95f, 1.0f};
@@ -25,6 +40,7 @@ struct ButtonStyle
     float fontSize{18.0f};
     float cornerRadius{8.0f};
     float borderThickness{1.0f};
+    FocusStyle focus{};
 };
 
 struct CheckboxStyle
@@ -39,6 +55,7 @@ struct CheckboxStyle
     float boxSize{20.0f};
     float cornerRadius{4.0f};
     float borderThickness{1.0f};
+    FocusStyle focus{};
 };
 
 struct ToggleStyle
@@ -57,6 +74,7 @@ struct ToggleStyle
     float knobInset{3.0f};
     float cornerRadius{11.0f};
     float borderThickness{1.0f};
+    FocusStyle focus{};
 };
 
 struct SliderStyle
@@ -75,6 +93,7 @@ struct SliderStyle
     float thumbHeight{22.0f};
     float cornerRadius{4.0f};
     float borderThickness{1.0f};
+    FocusStyle focus{};
 };
 
 struct RectangleStyle

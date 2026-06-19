@@ -416,9 +416,7 @@ namespace
         return false;
     }
 
-    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f},
-                                                  .leftMouseButtonDown = true,
-                                                  .leftMouseButtonPressed = true});
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
     if (uiContext.Button("test-button", buttonBounds, buttonStyle))
     {
         return false;
@@ -1464,6 +1462,74 @@ namespace
     return !uiContext.FocusedControlId().has_value() && !uiContext.HasFocus("missing-control");
 }
 
+[[nodiscard]] bool TestControlStylesDefaultToOuterRingFocusConfiguration()
+{
+    using namespace greenfield;
+
+    const ButtonStyle buttonStyle{};
+    const CheckboxStyle checkboxStyle{};
+    const ToggleStyle toggleStyle{};
+    const SliderStyle sliderStyle{};
+
+    const auto hasExpectedDefaults = [](const FocusStyle& focusStyle) {
+        return focusStyle.kind == FocusVisualKind::OuterRing &&
+               tests::ColorsMatch(focusStyle.color, Color{0.92f, 0.96f, 1.0f, 0.95f}) &&
+               focusStyle.thickness == 2.0f && focusStyle.outset == 2.0f &&
+               focusStyle.cornerRadiusOffset == 2.0f;
+    };
+
+    return hasExpectedDefaults(buttonStyle.focus) &&
+           hasExpectedDefaults(checkboxStyle.focus) &&
+           hasExpectedDefaults(toggleStyle.focus) &&
+           hasExpectedDefaults(sliderStyle.focus);
+}
+
+[[nodiscard]] bool TestControlStylesPreserveCustomFocusConfiguration()
+{
+    using namespace greenfield;
+
+    const FocusStyle customFocusStyle{
+        .kind = FocusVisualKind::None,
+        .color = Color{0.2f, 0.7f, 0.3f, 0.8f},
+        .thickness = 3.0f,
+        .outset = 4.0f,
+        .cornerRadiusOffset = 5.0f,
+    };
+
+    ButtonStyle buttonStyle{};
+    buttonStyle.focus = customFocusStyle;
+
+    CheckboxStyle checkboxStyle{};
+    checkboxStyle.focus = customFocusStyle;
+
+    ToggleStyle toggleStyle{};
+    toggleStyle.focus = customFocusStyle;
+
+    SliderStyle sliderStyle{};
+    sliderStyle.focus = customFocusStyle;
+
+    return buttonStyle.focus.kind == FocusVisualKind::None &&
+           tests::ColorsMatch(buttonStyle.focus.color, customFocusStyle.color) &&
+           buttonStyle.focus.thickness == customFocusStyle.thickness &&
+           buttonStyle.focus.outset == customFocusStyle.outset &&
+           buttonStyle.focus.cornerRadiusOffset == customFocusStyle.cornerRadiusOffset &&
+           checkboxStyle.focus.kind == FocusVisualKind::None &&
+           tests::ColorsMatch(checkboxStyle.focus.color, customFocusStyle.color) &&
+           checkboxStyle.focus.thickness == customFocusStyle.thickness &&
+           checkboxStyle.focus.outset == customFocusStyle.outset &&
+           checkboxStyle.focus.cornerRadiusOffset == customFocusStyle.cornerRadiusOffset &&
+           toggleStyle.focus.kind == FocusVisualKind::None &&
+           tests::ColorsMatch(toggleStyle.focus.color, customFocusStyle.color) &&
+           toggleStyle.focus.thickness == customFocusStyle.thickness &&
+           toggleStyle.focus.outset == customFocusStyle.outset &&
+           toggleStyle.focus.cornerRadiusOffset == customFocusStyle.cornerRadiusOffset &&
+           sliderStyle.focus.kind == FocusVisualKind::None &&
+           tests::ColorsMatch(sliderStyle.focus.color, customFocusStyle.color) &&
+           sliderStyle.focus.thickness == customFocusStyle.thickness &&
+           sliderStyle.focus.outset == customFocusStyle.outset &&
+           sliderStyle.focus.cornerRadiusOffset == customFocusStyle.cornerRadiusOffset;
+}
+
 [[nodiscard]] bool TestRequestFocusByIdAndName()
 {
     using namespace greenfield;
@@ -1810,10 +1876,7 @@ namespace
         return false;
     }
 
-    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f},
-                                                  .leftMouseButtonDown = true,
-                                                  .enterPressed = true,
-                                                  .spacePressed = true});
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{20.0f, 30.0f}, .leftMouseButtonDown = true, .enterPressed = true, .spacePressed = true});
     const bool changedDuringCapture =
         uiContext.Checkbox("captured-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
     const auto& dragCommands = uiContext.EndFrame();
@@ -2050,6 +2113,8 @@ int main()
         !TestSliderRenderCommandsIncludeTrackFillThumbAndLabel() ||
         !TestSliderDragUpdatesWhileCaptured() ||
         !TestOverlappingSliderAndButtonConsumeOneGesture() || !TestFocusDefaultsToEmpty() ||
+        !TestControlStylesDefaultToOuterRingFocusConfiguration() ||
+        !TestControlStylesPreserveCustomFocusConfiguration() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
         !TestFocusPersistsAcrossFrames() ||
         !TestTabFocusesFirstFocusableControlWhenNothingIsFocused() ||
