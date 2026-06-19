@@ -84,6 +84,18 @@ The existing Control Room sandbox includes one small Slider example for manual v
 
 M6C does not add keyboard navigation, text entry, dropdowns, tabs, modals, toasts, tooltips, accessibility, a retained UI tree, a full event dispatch system, a broad controls library, compositor work, mixed-surface composition, Canvas2D, Scene3D, shader tools, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared text/font service, Skia, Python bindings, or hot reload.
 
+## M6F
+
+M6F is the narrow keyboard/focus navigation groundwork slice for the existing immediate UI runtime.
+
+Current M6F work adds platform-neutral per-frame keyboard edge fields to `InputState` for Tab, Shift+Tab, Enter, and Space. SDL key-down events populate those fields in platform code, keeping UI code independent from SDL.
+
+`UiContext` now rebuilds focusable registration each frame from immediate-mode control encounter order. Button, Checkbox, Toggle/Switch, and Slider register as focusable. Tab moves focus forward through that current-frame order, and Shift+Tab moves backward. When no control is focused, traversal starts from the first or last registered control. When persisted focus points to a control missing from the current frame, traversal restarts from the corresponding frame edge.
+
+Focused Button activates on Enter/Space. Focused Checkbox and Toggle/Switch toggle on Enter/Space. Slider is focusable, but keyboard value adjustment is deferred. Existing Button, Checkbox, Toggle/Switch, Slider mouse behavior, scroll panels, layout, clipping, renderer-neutral render command behavior, renderer selection, Fast2D diagnostic and visible paths, and WebGPU sandbox behavior are preserved.
+
+M6F does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, tooltips, a retained UI tree, a full event dispatch system, a shortcut/keybinding system, spatial navigation, gamepad navigation, Slider arrow-key/repeat behavior, focus visuals beyond any existing control drawing, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
+
 ## M6E
 
 M6E is the Fast2D visual parity foundation slice for the existing one-sandbox renderer-selection workflow.
@@ -142,6 +154,7 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 - App template generation beyond the current illustrative scaffold
 - Install, package, or export rule implementation
 - Windows-specific export workflow implementation
-- Keyboard navigation, text input, IME, clipboard, selection, and accessibility
+- Text entry, character input, IME, clipboard, selection, accessibility, and screen reader semantics
+- Shortcut/keybinding system, spatial navigation, gamepad navigation, and Slider arrow-key/repeat behavior
 - Retained UI tree or full UI event dispatch system
 - Broad product-quality UI control set beyond the current Checkbox, Toggle/Switch, and Slider foundation

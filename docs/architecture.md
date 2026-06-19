@@ -46,7 +46,7 @@ These types are dependency-light and should stay independent from platform, rend
 
 ### `engine/input`
 
-Input contains platform-neutral interaction state and minimal routing helpers. `InputState` currently exposes mouse position, left mouse button transitions, and vertical scroll delta. The interaction routing vocabulary can hit-test an input point against surface bounds and return the target `SurfaceId` when one is found.
+Input contains platform-neutral interaction state and minimal routing helpers. `InputState` currently exposes mouse position, left mouse button transitions, vertical scroll delta, and per-frame keyboard edge fields for Tab, Shift+Tab, Enter, and Space. The interaction routing vocabulary can hit-test an input point against surface bounds and return the target `SurfaceId` when one is found.
 
 Input state and routing should describe what happened and which renderer-neutral surface bounds were targeted, not where the input came from. They must not depend on SDL, WebGPU, Dawn, FreeType, or any concrete windowing backend.
 
@@ -64,7 +64,7 @@ Platform contains abstract interfaces for windows and native drawing surfaces:
 The current SDL implementation lives in `engine/platform`:
 
 - `SdlWindow` implements `IWindow` and `INativeSurfaceProvider`.
-- `SdlWindow` owns the SDL window, polls SDL events, updates `InputState`, and exposes native Wayland or X11 surface information.
+- `SdlWindow` owns the SDL window, polls SDL events, translates SDL mouse, scroll, and key-down events into platform-neutral `InputState`, and exposes native Wayland or X11 surface information.
 - `SdlStartupPresenter` uses SDL window surfaces to draw an immediate startup frame before WebGPU takes over.
 - `SdlRasterPresenter` uses SDL window surfaces to present CPU raster pixels for the opt-in Fast2D sandbox path.
 
@@ -148,7 +148,7 @@ M6A added product-quality runtime groundwork inside this immediate UI model:
 
 - `UiId` is the renderer-neutral and platform-neutral control identity type. Existing immediate UI string names are normalized internally into `UiId` where runtime state needs stable identity.
 - `UiContext` separates persistent runtime state from per-frame state. Style, active control identity, focus identity, and vertical scroll offsets persist across frames. Render commands, layout stack, scroll panel stack, input snapshot, and mouse press/release consumption flags are rebuilt for each frame.
-- Focus is intentionally minimal and persistent. `UiContext` can request, clear, query, and report the focused control identity, but this does not add keyboard navigation, text entry, focus traversal, accessibility semantics, or modal focus traps.
+- Focus is intentionally minimal and persistent. `UiContext` can request, clear, query, and report the focused control identity.
 - Active-control state is generalized as capture state instead of button-specific state. Buttons use it to keep a press/release gesture tied to the initiating control across frames.
 - Per-frame mouse press/release consumption prevents later overlapping buttons from claiming the same gesture while preserving existing immediate button calls.
 
@@ -172,9 +172,20 @@ M6C establishes the first continuous/numeric stateful control foundation:
 - Slider clamps values into its effective range and safely handles reversed or degenerate ranges.
 - Slider emits renderer-neutral track, fill, thumb, and label commands through `RenderCommandList`; it does not call SDL, Dawn/WebGPU, FreeType, or renderer APIs.
 
+M6F establishes narrow keyboard/focus navigation groundwork inside the same immediate UI model:
+
+- `InputState` carries platform-neutral per-frame keyboard edge vocabulary for Tab, Shift+Tab, Enter, and Space.
+- SDL-owned platform code translates native key-down events into that neutral vocabulary. UI code consumes `InputState` without including SDL or knowing the source of the events.
+- `UiContext` rebuilds the current frame's focusable-control list during immediate-mode control calls. Button, Checkbox, Toggle/Switch, and Slider register as focusable when encountered.
+- Tab and Shift+Tab traversal uses the current frame's control encounter order. When no control is focused, Tab focuses the first registered control and Shift+Tab focuses the last. When the persisted focused `UiId` is missing from the current frame, forward traversal restarts at the first registered control and backward traversal restarts at the last.
+- Focus is persisted as a `UiId` in `UiContext`, separate from active-control capture, scroll offsets, boolean state, and numeric state.
+- Focused Button activates on Enter/Space. Focused Checkbox and Toggle/Switch toggle on Enter/Space. Keyboard activation is ignored while another control has mouse capture.
+- Slider is focusable for traversal, but arrow-key adjustment, repeat behavior, and other keyboard value editing are deferred.
+- Renderers do not know about focus behavior. Focus traversal and activation affect UI runtime state and existing renderer-neutral render command emission only.
+
 The sandbox includes one small Slider example in the existing Control Room UI for manual visual verification. A local screenshot capture workflow has been proven useful during development, but screenshots are not committed project artifacts and are not required automated test outputs.
 
-This foundation is UI runtime and first numeric-control groundwork, not a retained-mode system or broad controls milestone. It does not add tabs, dropdowns, modals, toasts, tooltips, keyboard input, text input, IME, clipboard, selection, accessibility, modal focus traps, a retained UI tree, full event dispatch system, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
+This foundation is UI runtime and first keyboard/focus groundwork, not a retained-mode system or broad controls milestone. It does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, toasts, tooltips, a retained UI tree, full event dispatch system, shortcut/keybinding system, spatial navigation, gamepad navigation, Slider arrow-key/repeat behavior, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ### `apps/sandbox`
 
@@ -302,7 +313,8 @@ The current input path is:
 2. `SdlWindow` translates those events into platform-neutral `InputState`.
 3. The application reads `InputState` through `IWindow`.
 4. `UiContext` snapshots `InputState` for the current immediate UI frame.
-5. UI interaction updates persistent runtime state where needed, consumes per-frame mouse press/release gestures, and emits render commands for the current frame.
+5. Immediate-mode controls register focusable `UiId`s in current-frame encounter order.
+6. UI interaction updates persistent runtime state where needed, consumes per-frame mouse press/release gestures, applies Tab / Shift+Tab traversal at frame end, handles focused Enter/Space activation for supported controls, and emits render commands for the current frame.
 
 This keeps native event details out of UI code and leaves room for other platform providers to produce the same `InputState`.
 
