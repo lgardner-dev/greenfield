@@ -92,9 +92,9 @@ Current M6F work adds platform-neutral per-frame keyboard edge fields to `InputS
 
 `UiContext` now rebuilds focusable registration each frame from immediate-mode control encounter order. Button, Checkbox, Toggle/Switch, and Slider register as focusable. Tab moves focus forward through that current-frame order, and Shift+Tab moves backward. When no control is focused, traversal starts from the first or last registered control. When persisted focus points to a control missing from the current frame, traversal restarts from the corresponding frame edge.
 
-Focused Button activates on Enter/Space. Focused Checkbox and Toggle/Switch toggle on Enter/Space. Slider is focusable, but keyboard value adjustment is deferred. Existing Button, Checkbox, Toggle/Switch, Slider mouse behavior, scroll panels, layout, clipping, renderer-neutral render command behavior, renderer selection, Fast2D diagnostic and visible paths, and WebGPU sandbox behavior are preserved.
+Focused Button activates on Enter/Space. Focused Checkbox and Toggle/Switch toggle on Enter/Space. Existing Button, Checkbox, Toggle/Switch, Slider mouse behavior, scroll panels, layout, clipping, renderer-neutral render command behavior, renderer selection, Fast2D diagnostic and visible paths, and WebGPU sandbox behavior are preserved.
 
-M6F does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, tooltips, a retained UI tree, a full event dispatch system, a shortcut/keybinding system, spatial navigation, gamepad navigation, Slider arrow-key/repeat behavior, focus visuals beyond any existing control drawing, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
+M6F does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, tooltips, a retained UI tree, a full event dispatch system, a shortcut/keybinding system, spatial navigation, gamepad navigation, focus visuals beyond any existing control drawing, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
 
 ## M6G
 
@@ -104,9 +104,21 @@ Current M6G work adds shared configurable focus-style vocabulary through `FocusV
 
 Focused Button, Checkbox, Toggle/Switch, and Slider emit renderer-neutral rectangle commands for an outer focus ring around button bounds, checkbox box bounds, toggle track bounds, or slider track bounds. Focus state remains in `UiContext`, and focus visuals remain part of UI control/style drawing. Renderers do not know focus semantics, and SDL/platform code does not know focus styling.
 
-Manual visual verification was completed in both WebGPU and Fast2D through the existing sandbox renderer-selection path. WebGPU remains the default interactive sandbox renderer, and Fast2D remains the opt-in visible UI iteration path with deferred text. Slider continues to participate in focus traversal, but keyboard value adjustment is still deferred.
+Manual visual verification was completed in both WebGPU and Fast2D through the existing sandbox renderer-selection path. WebGPU remains the default interactive sandbox renderer, and Fast2D remains the opt-in visible UI iteration path with deferred text. Slider continues to participate in focus traversal.
 
-M6G does not add a full theme engine, accessibility support, text entry, IME, clipboard, selection, shortcut/keybinding systems, retained UI, modal focus traps, spatial or gamepad navigation, Slider keyboard adjustment, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
+M6G does not add a full theme engine, accessibility support, text entry, IME, clipboard, selection, shortcut/keybinding systems, retained UI, modal focus traps, spatial or gamepad navigation, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
+
+## M6H
+
+M6H is the narrow focused Slider keyboard adjustment slice for the existing immediate UI runtime.
+
+Current M6H work adds platform-neutral per-frame Left/Right arrow edge fields to `InputState`. SDL translates non-repeat Left/Right key-down events into those fields and clears them during per-frame input reset, keeping UI code independent from SDL and native key event details.
+
+Focused Slider now responds to that platform-neutral arrow vocabulary. Left decreases value and Right increases value. Slider uses a narrow internal keyboard step based on the effective normalized range, clamps to normalized min/max bounds after keyboard adjustment, remains safe for reversed ranges through normalized bounds, remains safe for degenerate ranges without false changes, and returns `true` only when the current frame actually changes the value.
+
+Existing Button, Checkbox, Toggle/Switch, and Slider mouse behavior, focus traversal, focus visuals, keyboard activation, scroll panels, layout, clipping, renderer-neutral render command behavior, renderer selection, Fast2D diagnostic and visible sandbox paths, and WebGPU sandbox behavior are preserved. WebGPU remains the default interactive sandbox renderer. Fast2D remains opt-in and visible with deferred text rendering.
+
+M6H does not add key repeat policy, a full shortcut/keybinding system, an input action system, text input, character input, IME, clipboard, selection, accessibility, screen reader semantics, spatial navigation, gamepad navigation, a retained UI tree, a full event dispatch system, dropdowns, tabs, modals, toasts, tooltips, Greenfield Studio, Greenfield CLI, Canvas2D, Scene3D, Fast2D text rendering, Skia, Python bindings, or hot reload.
 
 ## M6E
 
