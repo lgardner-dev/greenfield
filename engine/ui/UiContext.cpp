@@ -256,6 +256,11 @@ bool UiContext::Button(const std::string& name, const std::string& label, const 
     const bool isReleased = IsControlActive(buttonId) && _inputState.leftMouseButtonReleased;
     const bool isMouseClicked = isHovered && isReleased && !IsMouseReleaseConsumed();
     const bool isClicked = isMouseClicked || IsKeyboardActivationRequested(buttonId);
+    if (HasFocus(buttonId))
+    {
+        DrawFocusRing(bounds, buttonStyle.cornerRadius, buttonStyle.focus);
+    }
+
     DrawRectangle(bounds,
                   RectangleStyle{
                       .fillColor = GetButtonColor(buttonId, bounds, buttonStyle),
@@ -501,13 +506,7 @@ bool UiContext::Slider(const std::string& name, const std::string& label, const 
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
     const float normalizedMinimumValue = std::min(minimumValue, maximumValue);
     const float normalizedMaximumValue = std::max(minimumValue, maximumValue);
-    const float safeTrackWidth = std::max(0.0f, std::min(sliderStyle.trackWidth, bounds.size.x));
-    const float safeTrackHeight = std::max(0.0f, std::min(sliderStyle.trackHeight, bounds.size.y));
-    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
-    const Rect trackBounds{
-        .position = Vec2{.x = bounds.position.x, .y = trackTop},
-        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
-    };
+    const Rect trackBounds = GetSliderTrackBounds(bounds, sliderStyle);
 
     if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
     {
@@ -866,6 +865,74 @@ float UiContext::GetClampedNumericState(const UiId& controlId, float defaultValu
     return value;
 }
 
+Rect UiContext::GetOutsetRectangle(const Rect& rectangle, float outset) const noexcept
+{
+    return Rect{
+        .position = Vec2{
+            .x = rectangle.position.x - outset,
+            .y = rectangle.position.y - outset,
+        },
+        .size = Vec2{
+            .x = std::max(0.0f, rectangle.size.x + outset * 2.0f),
+            .y = std::max(0.0f, rectangle.size.y + outset * 2.0f),
+        },
+    };
+}
+
+void UiContext::DrawFocusRing(const Rect& rectangle, float cornerRadius, const FocusStyle& focusStyle)
+{
+    if (focusStyle.kind == FocusVisualKind::None || focusStyle.thickness <= 0.0f || focusStyle.color.alpha <= 0.0f)
+    {
+        return;
+    }
+
+    const Rect focusRectangle = GetOutsetRectangle(rectangle, focusStyle.outset);
+    if (focusRectangle.size.x <= 0.0f || focusRectangle.size.y <= 0.0f)
+    {
+        return;
+    }
+
+    DrawRectangle(focusRectangle,
+                  RectangleStyle{
+                      .fillColor = Color{0.0f, 0.0f, 0.0f, 0.0f},
+                      .cornerRadius = std::max(0.0f, cornerRadius + focusStyle.cornerRadiusOffset),
+                      .borderColor = focusStyle.color,
+                      .borderThickness = focusStyle.thickness,
+                  });
+}
+
+Rect UiContext::GetCheckboxBoxBounds(const Rect& bounds, const CheckboxStyle& checkboxStyle) const noexcept
+{
+    const float safeBoxSize = std::max(0.0f, std::min(checkboxStyle.boxSize, bounds.size.y));
+    const float boxTop = bounds.position.y + (bounds.size.y - safeBoxSize) * 0.5f;
+    return Rect{
+        .position = Vec2{.x = bounds.position.x, .y = boxTop},
+        .size = Vec2{.x = safeBoxSize, .y = safeBoxSize},
+    };
+}
+
+Rect UiContext::GetToggleTrackBounds(const Rect& bounds, const ToggleStyle& toggleStyle) const noexcept
+{
+    const float safeTrackWidth = std::max(0.0f, std::min(toggleStyle.trackWidth, bounds.size.x));
+    const float safeTrackHeight = std::max(0.0f, std::min(toggleStyle.trackHeight, bounds.size.y));
+    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
+    return Rect{
+        .position = Vec2{.x = bounds.position.x, .y = trackTop},
+        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
+    };
+}
+
+Rect UiContext::GetSliderTrackBounds(const Rect& bounds, const SliderStyle& sliderStyle) const noexcept
+{
+    const float safeTrackWidth = std::max(0.0f, std::min(sliderStyle.trackWidth, bounds.size.x));
+    const float safeTrackHeight = std::max(0.0f, std::min(sliderStyle.trackHeight, bounds.size.y));
+    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
+    return Rect{
+        .position = Vec2{.x = bounds.position.x, .y = trackTop},
+        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
+    };
+}
+
 Color UiContext::GetButtonColor(const UiId& buttonId, const Rect& bounds, const ButtonStyle& buttonStyle) const
 {
     const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
@@ -996,12 +1063,13 @@ void UiContext::DrawButtonLabel(const std::string& label, const Rect& bounds, co
 void UiContext::DrawCheckbox(const UiId& checkboxId, const std::string& label, const Rect& bounds,
                              const CheckboxStyle& checkboxStyle)
 {
-    const float safeBoxSize = std::max(0.0f, std::min(checkboxStyle.boxSize, bounds.size.y));
-    const float boxTop = bounds.position.y + (bounds.size.y - safeBoxSize) * 0.5f;
-    const Rect boxBounds{
-        .position = Vec2{.x = bounds.position.x, .y = boxTop},
-        .size = Vec2{.x = safeBoxSize, .y = safeBoxSize},
-    };
+    const Rect boxBounds = GetCheckboxBoxBounds(bounds, checkboxStyle);
+    const float safeBoxSize = boxBounds.size.x;
+    if (HasFocus(checkboxId))
+    {
+        DrawFocusRing(boxBounds, checkboxStyle.cornerRadius, checkboxStyle.focus);
+    }
+
     DrawRectangle(boxBounds,
                   RectangleStyle{
                       .fillColor = GetCheckboxBoxColor(checkboxId, bounds, checkboxStyle),
@@ -1031,13 +1099,14 @@ void UiContext::DrawCheckbox(const UiId& checkboxId, const std::string& label, c
 void UiContext::DrawToggle(const UiId& toggleId, const std::string& label, const Rect& bounds,
                            const ToggleStyle& toggleStyle)
 {
-    const float safeTrackWidth = std::max(0.0f, std::min(toggleStyle.trackWidth, bounds.size.x));
-    const float safeTrackHeight = std::max(0.0f, std::min(toggleStyle.trackHeight, bounds.size.y));
-    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
-    const Rect trackBounds{
-        .position = Vec2{.x = bounds.position.x, .y = trackTop},
-        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
-    };
+    const Rect trackBounds = GetToggleTrackBounds(bounds, toggleStyle);
+    const float safeTrackWidth = trackBounds.size.x;
+    const float safeTrackHeight = trackBounds.size.y;
+    if (HasFocus(toggleId))
+    {
+        DrawFocusRing(trackBounds, toggleStyle.cornerRadius, toggleStyle.focus);
+    }
+
     DrawRectangle(trackBounds,
                   RectangleStyle{
                       .fillColor = GetToggleTrackColor(toggleId, bounds, toggleStyle),
@@ -1074,13 +1143,13 @@ void UiContext::DrawToggle(const UiId& toggleId, const std::string& label, const
 void UiContext::DrawSlider(const UiId& sliderId, const std::string& label, const Rect& bounds, float minimumValue,
                            float maximumValue, const SliderStyle& sliderStyle)
 {
-    const float safeTrackWidth = std::max(0.0f, std::min(sliderStyle.trackWidth, bounds.size.x));
-    const float safeTrackHeight = std::max(0.0f, std::min(sliderStyle.trackHeight, bounds.size.y));
-    const float trackTop = bounds.position.y + (bounds.size.y - safeTrackHeight) * 0.5f;
-    const Rect trackBounds{
-        .position = Vec2{.x = bounds.position.x, .y = trackTop},
-        .size = Vec2{.x = safeTrackWidth, .y = safeTrackHeight},
-    };
+    const Rect trackBounds = GetSliderTrackBounds(bounds, sliderStyle);
+    const float safeTrackWidth = trackBounds.size.x;
+    if (HasFocus(sliderId))
+    {
+        DrawFocusRing(trackBounds, sliderStyle.cornerRadius, sliderStyle.focus);
+    }
+
     DrawRectangle(trackBounds,
                   RectangleStyle{
                       .fillColor = GetSliderTrackColor(sliderId, bounds, sliderStyle),

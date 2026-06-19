@@ -257,6 +257,11 @@ private:
                                                       float maximumValue) const noexcept;
     [[nodiscard]] float GetClampedScrollOffset(const UiId& panelId, const Rect& bounds, float contentHeight);
     [[nodiscard]] float GetVerticalScrollOffset(const UiId& panelId) const;
+    [[nodiscard]] Rect GetOutsetRectangle(const Rect& rectangle, float outset) const noexcept;
+    void DrawFocusRing(const Rect& rectangle, float cornerRadius, const FocusStyle& focusStyle);
+    [[nodiscard]] Rect GetCheckboxBoxBounds(const Rect& bounds, const CheckboxStyle& checkboxStyle) const noexcept;
+    [[nodiscard]] Rect GetToggleTrackBounds(const Rect& bounds, const ToggleStyle& toggleStyle) const noexcept;
+    [[nodiscard]] Rect GetSliderTrackBounds(const Rect& bounds, const SliderStyle& sliderStyle) const noexcept;
     void DrawButtonLabel(const std::string& label, const Rect& bounds, const ButtonStyle& buttonStyle);
     void DrawCheckbox(const UiId& checkboxId, const std::string& label, const Rect& bounds,
                       const CheckboxStyle& checkboxStyle);

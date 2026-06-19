@@ -1530,6 +1530,167 @@ namespace
            sliderStyle.focus.cornerRadiusOffset == customFocusStyle.cornerRadiusOffset;
 }
 
+[[nodiscard]] bool TestFocusedButtonEmitsOuterFocusRingCommand()
+{
+    using namespace greenfield;
+    using greenfield::tests::ColorsMatch;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect buttonBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{100.0f, 40.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-button");
+    uiContext.BeginFrame(MakeLayout());
+    const bool clicked = uiContext.Button("focused-button", buttonBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !clicked && commands.Size() == 3U &&
+           commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{8.0f, 18.0f}, .size = Vec2{104.0f, 44.0f}}) &&
+           ColorsMatch(commands.Commands()[0].fillColor, Color{0.0f, 0.0f, 0.0f, 0.0f}) &&
+           ColorsMatch(commands.Commands()[0].borderColor, Color{0.92f, 0.96f, 1.0f, 0.95f}) &&
+           commands.Commands()[0].borderThickness == 2.0f &&
+           commands.Commands()[0].cornerRadius == 10.0f &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[2].type == RenderCommandType::DrawText;
+}
+
+[[nodiscard]] bool TestFocusedCheckboxEmitsFocusRingAroundBox()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect checkboxBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{140.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-checkbox");
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Checkbox("focused-checkbox", "Focused checkbox", checkboxBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 3U &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{8.0f, 26.0f}, .size = Vec2{24.0f, 24.0f}}) &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{10.0f, 28.0f}, .size = Vec2{20.0f, 20.0f}}) &&
+           commands.Commands()[2].type == RenderCommandType::DrawText;
+}
+
+[[nodiscard]] bool TestFocusedToggleEmitsFocusRingAroundTrack()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect toggleBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{160.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-toggle");
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Toggle("focused-toggle", "Focused toggle", toggleBounds);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 4U &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{8.0f, 25.0f}, .size = Vec2{46.0f, 26.0f}}) &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{10.0f, 27.0f}, .size = Vec2{42.0f, 22.0f}}) &&
+           commands.Commands()[2].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[3].type == RenderCommandType::DrawText;
+}
+
+[[nodiscard]] bool TestFocusedSliderEmitsFocusRingAroundTrack()
+{
+    using namespace greenfield;
+    using greenfield::tests::RectanglesMatch;
+
+    const Rect sliderBounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-slider");
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.Slider("focused-slider", "Focused slider", sliderBounds, 0.0f, 1.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 5U &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{8.0f, 32.0f}, .size = Vec2{124.0f, 12.0f}}) &&
+           commands.Commands()[1].type == RenderCommandType::FillRectangle &&
+           RectanglesMatch(commands.Commands()[1].rectangle,
+                           Rect{.position = Vec2{10.0f, 34.0f}, .size = Vec2{120.0f, 8.0f}}) &&
+           commands.Commands()[2].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[3].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[4].type == RenderCommandType::DrawText;
+}
+
+[[nodiscard]] bool TestFocusVisualKindNoneSuppressesFocusRing()
+{
+    using namespace greenfield;
+
+    ButtonStyle buttonStyle{};
+    buttonStyle.focus.kind = FocusVisualKind::None;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("button-without-focus-ring");
+    uiContext.BeginFrame(MakeLayout());
+    const bool clicked = uiContext.Button("button-without-focus-ring",
+                                          "No focus ring",
+                                          Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}},
+                                          buttonStyle);
+    const auto& commands = uiContext.EndFrame();
+
+    return !clicked && commands.Size() == 2U &&
+           commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[1].type == RenderCommandType::DrawText;
+}
+
+[[nodiscard]] bool TestCustomFocusStyleControlsFocusRingGeometry()
+{
+    using namespace greenfield;
+    using greenfield::tests::ColorsMatch;
+    using greenfield::tests::RectanglesMatch;
+
+    ButtonStyle buttonStyle{};
+    buttonStyle.cornerRadius = 6.0f;
+    buttonStyle.focus = FocusStyle{
+        .kind = FocusVisualKind::OuterRing,
+        .color = Color{0.2f, 0.7f, 0.3f, 0.8f},
+        .thickness = 3.0f,
+        .outset = 4.0f,
+        .cornerRadiusOffset = 5.0f,
+    };
+
+    UiContext uiContext;
+    uiContext.RequestFocus("custom-focus-button");
+    uiContext.BeginFrame(MakeLayout());
+    const bool clicked = uiContext.Button("custom-focus-button",
+                                          "Custom focus",
+                                          Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}},
+                                          buttonStyle);
+    const auto& commands = uiContext.EndFrame();
+
+    return !clicked && commands.Size() == 3U &&
+           RectanglesMatch(commands.Commands()[0].rectangle,
+                           Rect{.position = Vec2{6.0f, 16.0f}, .size = Vec2{108.0f, 48.0f}}) &&
+           ColorsMatch(commands.Commands()[0].borderColor, buttonStyle.focus.color) &&
+           commands.Commands()[0].borderThickness == 3.0f &&
+           commands.Commands()[0].cornerRadius == 11.0f;
+}
+
 [[nodiscard]] bool TestRequestFocusByIdAndName()
 {
     using namespace greenfield;
@@ -1624,7 +1785,7 @@ namespace
         uiContext.Toggle("third-control", Rect{.position = Vec2{10.0f, 116.0f}, .size = Vec2{160.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return !firstClicked && !secondChanged && !thirdChanged && commands.Size() == 7U &&
+    return !firstClicked && !secondChanged && !thirdChanged && commands.Size() == 8U &&
            uiContext.HasFocus("second-control");
 }
 
@@ -1644,7 +1805,7 @@ namespace
         uiContext.Toggle("third-control", Rect{.position = Vec2{10.0f, 116.0f}, .size = Vec2{160.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return !firstClicked && !secondChanged && !thirdChanged && commands.Size() == 7U &&
+    return !firstClicked && !secondChanged && !thirdChanged && commands.Size() == 8U &&
            uiContext.HasFocus("second-control");
 }
 
@@ -1661,7 +1822,7 @@ namespace
     const bool firstChanged =
         uiContext.Checkbox("persistent-focusable", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{160.0f, 36.0f}});
     const auto& firstCommands = uiContext.EndFrame();
-    if (firstClicked || firstChanged || firstCommands.Size() != 4U || !uiContext.HasFocus("persistent-focusable"))
+    if (firstClicked || firstChanged || firstCommands.Size() != 5U || !uiContext.HasFocus("persistent-focusable"))
     {
         return false;
     }
@@ -1673,7 +1834,7 @@ namespace
         uiContext.Checkbox("persistent-focusable", Rect{.position = Vec2{10.0f, 70.0f}, .size = Vec2{160.0f, 36.0f}});
     const auto& secondCommands = uiContext.EndFrame();
 
-    return !secondClicked && !secondChanged && secondCommands.Size() == 4U &&
+    return !secondClicked && !secondChanged && secondCommands.Size() == 5U &&
            uiContext.HasFocus("persistent-focusable");
 }
 
@@ -1740,7 +1901,7 @@ namespace
         uiContext.Button("keyboard-button", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return clicked && commands.Size() == 2U;
+    return clicked && commands.Size() == 3U;
 }
 
 [[nodiscard]] bool TestFocusedButtonActivatesOnSpace()
@@ -1754,7 +1915,7 @@ namespace
         uiContext.Button("keyboard-button", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{100.0f, 40.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return clicked && commands.Size() == 2U;
+    return clicked && commands.Size() == 3U;
 }
 
 [[nodiscard]] bool TestUnfocusedButtonIgnoresKeyboardActivation()
@@ -1782,7 +1943,7 @@ namespace
         uiContext.Checkbox("keyboard-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return changed && commands.Size() == 3U &&
+    return changed && commands.Size() == 4U &&
            UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-checkbox"));
 }
 
@@ -1797,7 +1958,7 @@ namespace
         uiContext.Checkbox("keyboard-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return changed && commands.Size() == 3U &&
+    return changed && commands.Size() == 4U &&
            UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-checkbox"));
 }
 
@@ -1827,7 +1988,7 @@ namespace
         uiContext.Toggle("keyboard-toggle", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{160.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return changed && commands.Size() == 3U &&
+    return changed && commands.Size() == 4U &&
            UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-toggle"));
 }
 
@@ -1842,7 +2003,7 @@ namespace
         uiContext.Toggle("keyboard-toggle", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{160.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return changed && commands.Size() == 3U &&
+    return changed && commands.Size() == 4U &&
            UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("keyboard-toggle"));
 }
 
@@ -1871,7 +2032,7 @@ namespace
     const bool changedOnPress =
         uiContext.Checkbox("captured-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
     const auto& pressCommands = uiContext.EndFrame();
-    if (changedOnPress || pressCommands.Size() != 2U)
+    if (changedOnPress || pressCommands.Size() != 3U)
     {
         return false;
     }
@@ -1881,7 +2042,7 @@ namespace
         uiContext.Checkbox("captured-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
     const auto& dragCommands = uiContext.EndFrame();
 
-    return !changedDuringCapture && dragCommands.Size() == 2U &&
+    return !changedDuringCapture && dragCommands.Size() == 3U &&
            !UiContextTestAccess::GetBooleanState(uiContext, MakeUiId("captured-checkbox"));
 }
 
@@ -1896,9 +2057,10 @@ namespace
         uiContext.Checkbox("neutral-checkbox", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{140.0f, 36.0f}});
     const auto& commands = uiContext.EndFrame();
 
-    return changed && commands.Size() == 3U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
+    return changed && commands.Size() == 4U && commands.Commands()[0].type == RenderCommandType::FillRectangle &&
            commands.Commands()[1].type == RenderCommandType::FillRectangle &&
-           commands.Commands()[2].type == RenderCommandType::DrawText;
+           commands.Commands()[2].type == RenderCommandType::FillRectangle &&
+           commands.Commands()[3].type == RenderCommandType::DrawText;
 }
 
 [[nodiscard]] bool TestBooleanStatePersistsAcrossFrames()
@@ -2115,6 +2277,12 @@ int main()
         !TestOverlappingSliderAndButtonConsumeOneGesture() || !TestFocusDefaultsToEmpty() ||
         !TestControlStylesDefaultToOuterRingFocusConfiguration() ||
         !TestControlStylesPreserveCustomFocusConfiguration() ||
+        !TestFocusedButtonEmitsOuterFocusRingCommand() ||
+        !TestFocusedCheckboxEmitsFocusRingAroundBox() ||
+        !TestFocusedToggleEmitsFocusRingAroundTrack() ||
+        !TestFocusedSliderEmitsFocusRingAroundTrack() ||
+        !TestFocusVisualKindNoneSuppressesFocusRing() ||
+        !TestCustomFocusStyleControlsFocusRingGeometry() ||
         !TestRequestFocusByIdAndName() || !TestClearFocusRemovesFocus() ||
         !TestFocusPersistsAcrossFrames() ||
         !TestTabFocusesFirstFocusableControlWhenNothingIsFocused() ||
