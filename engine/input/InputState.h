@@ -16,6 +16,8 @@ struct InputState
     bool shiftTabPressed{false};
     bool enterPressed{false};
     bool spacePressed{false};
+    bool leftArrowPressed{false};
+    bool rightArrowPressed{false};
 };
 
 } // namespace greenfield

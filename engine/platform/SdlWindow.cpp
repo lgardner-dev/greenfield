@@ -214,6 +214,8 @@ void SdlWindow::BeginInputFrame()
     _inputState.shiftTabPressed = false;
     _inputState.enterPressed = false;
     _inputState.spacePressed = false;
+    _inputState.leftArrowPressed = false;
+    _inputState.rightArrowPressed = false;
 }
 
 void SdlWindow::HandleMouseMotion(float x, float y)
@@ -287,6 +289,18 @@ void SdlWindow::HandleKeyDown(unsigned int key, unsigned short modifiers, bool i
     if (key == SDLK_SPACE)
     {
         _inputState.spacePressed = true;
+        return;
+    }
+
+    if (key == SDLK_LEFT)
+    {
+        _inputState.leftArrowPressed = true;
+        return;
+    }
+
+    if (key == SDLK_RIGHT)
+    {
+        _inputState.rightArrowPressed = true;
     }
 }
 
