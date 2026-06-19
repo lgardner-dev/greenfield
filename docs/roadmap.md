@@ -96,6 +96,18 @@ Focused Button activates on Enter/Space. Focused Checkbox and Toggle/Switch togg
 
 M6F does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, tooltips, a retained UI tree, a full event dispatch system, a shortcut/keybinding system, spatial navigation, gamepad navigation, Slider arrow-key/repeat behavior, focus visuals beyond any existing control drawing, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
 
+## M6G
+
+M6G is the narrow visible focus styling slice for the existing immediate UI runtime and M6F keyboard/focus groundwork.
+
+Current M6G work adds shared configurable focus-style vocabulary through `FocusVisualKind { None, OuterRing }` and `FocusStyle { kind, color, thickness, outset, cornerRadiusOffset }`. Button, Checkbox, Toggle/Switch, and Slider now each carry per-control `FocusStyle` data. The approved default is a high-contrast outer ring, but the style remains configurable rather than hardcoded in renderer or platform code.
+
+Focused Button, Checkbox, Toggle/Switch, and Slider emit renderer-neutral rectangle commands for an outer focus ring around button bounds, checkbox box bounds, toggle track bounds, or slider track bounds. Focus state remains in `UiContext`, and focus visuals remain part of UI control/style drawing. Renderers do not know focus semantics, and SDL/platform code does not know focus styling.
+
+Manual visual verification was completed in both WebGPU and Fast2D through the existing sandbox renderer-selection path. WebGPU remains the default interactive sandbox renderer, and Fast2D remains the opt-in visible UI iteration path with deferred text. Slider continues to participate in focus traversal, but keyboard value adjustment is still deferred.
+
+M6G does not add a full theme engine, accessibility support, text entry, IME, clipboard, selection, shortcut/keybinding systems, retained UI, modal focus traps, spatial or gamepad navigation, Slider keyboard adjustment, Studio, CLI, Canvas2D, Scene3D, Fast2D text, Skia, Python bindings, or hot reload.
+
 ## M6E
 
 M6E is the Fast2D visual parity foundation slice for the existing one-sandbox renderer-selection workflow.

@@ -183,9 +183,18 @@ M6F establishes narrow keyboard/focus navigation groundwork inside the same imme
 - Slider is focusable for traversal, but arrow-key adjustment, repeat behavior, and other keyboard value editing are deferred.
 - Renderers do not know about focus behavior. Focus traversal and activation affect UI runtime state and existing renderer-neutral render command emission only.
 
+M6G adds visible focus styling inside the same immediate UI model:
+
+- Focus state remains persistent runtime state in `UiContext` as a `UiId`; SDL/platform code still only supplies platform-neutral keyboard edges and does not know focus styling rules.
+- Focus visuals live in UI control/style drawing code, not in renderer backends or platform implementations.
+- Button, Checkbox, Toggle/Switch, and Slider styles each carry a per-control `FocusStyle` with `FocusVisualKind`, color, thickness, outset, and corner-radius offset data.
+- Focused controls query `UiContext` focus state and emit renderer-neutral rectangle commands for an outer focus ring around button bounds, checkbox box bounds, toggle track bounds, or slider track bounds.
+- Renderers interpret those rectangle commands like any other UI draw command; they do not know focus semantics, traversal rules, or default focus styling policy.
+- App authors can keep the default high-contrast outer ring, override focus-ring appearance per control style, or suppress the ring with `FocusVisualKind::None`.
+
 The sandbox includes one small Slider example in the existing Control Room UI for manual visual verification. A local screenshot capture workflow has been proven useful during development, but screenshots are not committed project artifacts and are not required automated test outputs.
 
-This foundation is UI runtime and first keyboard/focus groundwork, not a retained-mode system or broad controls milestone. It does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, toasts, tooltips, a retained UI tree, full event dispatch system, shortcut/keybinding system, spatial navigation, gamepad navigation, Slider arrow-key/repeat behavior, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
+This foundation is UI runtime plus narrow keyboard/focus groundwork and configurable focus styling, not a retained-mode system or broad controls milestone. It does not add text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, toasts, tooltips, a retained UI tree, full event dispatch system, shortcut/keybinding system, spatial navigation, gamepad navigation, Slider arrow-key/repeat behavior, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ### `apps/sandbox`
 
