@@ -2063,6 +2063,157 @@ namespace
            commands.Commands()[3].type == RenderCommandType::DrawText;
 }
 
+[[nodiscard]] bool TestFocusedSliderRightArrowIncreasesValue()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.rightArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 0.5f;
+}
+
+[[nodiscard]] bool TestFocusedSliderLeftArrowDecreasesValue()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("keyboard-slider"), 6.0f);
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.leftArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 5.5f;
+}
+
+[[nodiscard]] bool TestUnfocusedSliderIgnoresArrowKeys()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("keyboard-slider"), 4.0f);
+    uiContext.RequestFocus("other-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.leftArrowPressed = true, .rightArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 4U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 4.0f;
+}
+
+[[nodiscard]] bool TestFocusedSliderRightArrowClampsAtMaximum()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("keyboard-slider"), 9.8f);
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.rightArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 10.0f;
+}
+
+[[nodiscard]] bool TestFocusedSliderLeftArrowClampsAtMinimum()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.2f);
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.leftArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 0.0f;
+}
+
+[[nodiscard]] bool TestFocusedSliderKeyboardAdjustmentHandlesReversedRange()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("keyboard-slider"), 6.0f);
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.rightArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 10.0f, 0.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 6.5f;
+}
+
+[[nodiscard]] bool TestFocusedSliderKeyboardAdjustmentDegenerateRangeReturnsFalse()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.leftArrowPressed = true, .rightArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 3.0f, 3.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 3.0f;
+}
+
+[[nodiscard]] bool TestFocusedSliderKeyboardAdjustmentReturnsTrueOnlyWhenValueChanges()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetNumericState(uiContext, MakeUiId("keyboard-slider"), 10.0f);
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.rightArrowPressed = true});
+    const bool changed =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 10.0f);
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 10.0f;
+}
+
+[[nodiscard]] bool TestFocusedSliderKeyboardAdjustmentIsIgnoredDuringMouseCapture()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("keyboard-slider");
+    uiContext.BeginFrame(MakeLayout(), InputState{.mousePosition = Vec2{10.0f, 30.0f}, .leftMouseButtonDown = true, .leftMouseButtonPressed = true});
+    const bool changedOnPress =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 1.0f);
+    const auto& pressCommands = uiContext.EndFrame();
+    if (changedOnPress || pressCommands.Size() != 5U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(),
+                         InputState{.mousePosition = Vec2{130.0f, 30.0f}, .leftMouseButtonDown = true, .rightArrowPressed = true});
+    const bool changedDuringCapture =
+        uiContext.Slider("keyboard-slider", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}}, 0.0f, 1.0f);
+    const auto& dragCommands = uiContext.EndFrame();
+
+    return changedDuringCapture && dragCommands.Size() == 5U &&
+           UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 1.0f;
+}
+
 [[nodiscard]] bool TestBooleanStatePersistsAcrossFrames()
 {
     using namespace greenfield;
@@ -2297,7 +2448,17 @@ int main()
         !TestUnfocusedCheckboxIgnoresKeyboardActivation() || !TestFocusedToggleTogglesOnEnter() ||
         !TestFocusedToggleTogglesOnSpace() || !TestUnfocusedToggleIgnoresKeyboardActivation() ||
         !TestKeyboardActivationIsIgnoredDuringMouseCapture() ||
-        !TestKeyboardActivationKeepsRendererNeutralCommands() || !TestBooleanStatePersistsAcrossFrames() ||
+        !TestKeyboardActivationKeepsRendererNeutralCommands() ||
+        !TestFocusedSliderRightArrowIncreasesValue() ||
+        !TestFocusedSliderLeftArrowDecreasesValue() ||
+        !TestUnfocusedSliderIgnoresArrowKeys() ||
+        !TestFocusedSliderRightArrowClampsAtMaximum() ||
+        !TestFocusedSliderLeftArrowClampsAtMinimum() ||
+        !TestFocusedSliderKeyboardAdjustmentHandlesReversedRange() ||
+        !TestFocusedSliderKeyboardAdjustmentDegenerateRangeReturnsFalse() ||
+        !TestFocusedSliderKeyboardAdjustmentReturnsTrueOnlyWhenValueChanges() ||
+        !TestFocusedSliderKeyboardAdjustmentIsIgnoredDuringMouseCapture() ||
+        !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestNumericStateDefaultsToProvidedValue() ||
         !TestNumericStatePersistsAcrossFrames() || !TestNumericStateIsIndependentPerUiId() ||
         !TestNumericStateCanBeOverwritten() || !TestClampedNumericStateHandlesRanges() ||

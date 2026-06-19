@@ -238,12 +238,14 @@ private:
     void MoveFocusForward();
     void MoveFocusBackward();
     [[nodiscard]] bool IsKeyboardActivationRequested(const UiId& controlId) const noexcept;
+    [[nodiscard]] bool IsSliderKeyboardAdjustmentAllowed(const UiId& controlId) const noexcept;
     [[nodiscard]] bool GetBooleanState(const UiId& controlId) const;
     void SetBooleanState(const UiId& controlId, bool value);
     void ToggleBooleanState(const UiId& controlId);
     [[nodiscard]] float GetNumericState(const UiId& controlId, float defaultValue) const;
     void SetNumericState(const UiId& controlId, float value);
     [[nodiscard]] float GetClampedNumericState(const UiId& controlId, float defaultValue, float minimum, float maximum);
+    [[nodiscard]] float GetSliderKeyboardStep(float minimumValue, float maximumValue) const noexcept;
     [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
     [[nodiscard]] Color GetCheckboxBoxColor(const UiId& checkboxId, const Rect& bounds,

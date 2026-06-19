@@ -17,6 +17,7 @@ constexpr float CheckboxIndicatorInset{5.0f};
 constexpr float ToggleHorizontalGap{10.0f};
 constexpr float SliderHorizontalGap{10.0f};
 constexpr float MouseWheelScrollPixels{42.0f};
+constexpr float SliderKeyboardStepDivisor{20.0f};
 
 } // namespace
 
@@ -516,15 +517,38 @@ bool UiContext::Slider(const std::string& name, const std::string& label, const 
 
     bool changed = false;
     float currentValue = GetClampedNumericState(sliderId, normalizedMinimumValue, normalizedMinimumValue, normalizedMaximumValue);
-    if (IsControlActive(sliderId) && _inputState.leftMouseButtonDown)
+    if (IsSliderKeyboardAdjustmentAllowed(sliderId))
     {
-        const float nextValue =
-            GetSliderValueAtMousePosition(trackBounds, normalizedMinimumValue, normalizedMaximumValue);
+        const float keyboardStep = GetSliderKeyboardStep(normalizedMinimumValue, normalizedMaximumValue);
+        float nextValue = currentValue;
+        if (_inputState.leftArrowPressed)
+        {
+            nextValue -= keyboardStep;
+        }
+        if (_inputState.rightArrowPressed)
+        {
+            nextValue += keyboardStep;
+        }
+
+        nextValue = ClampLayoutValue(nextValue, normalizedMinimumValue, normalizedMaximumValue);
         changed = nextValue != currentValue;
         if (changed)
         {
             SetNumericState(sliderId, nextValue);
+            currentValue = nextValue;
         }
+    }
+
+    if (IsControlActive(sliderId) && _inputState.leftMouseButtonDown)
+    {
+        const float nextValue =
+            GetSliderValueAtMousePosition(trackBounds, normalizedMinimumValue, normalizedMaximumValue);
+        const bool mouseChanged = nextValue != currentValue;
+        if (mouseChanged)
+        {
+            SetNumericState(sliderId, nextValue);
+        }
+        changed = changed || mouseChanged;
     }
 
     DrawSlider(sliderId, label, bounds, normalizedMinimumValue, normalizedMaximumValue, sliderStyle);
@@ -819,6 +843,11 @@ bool UiContext::IsKeyboardActivationRequested(const UiId& controlId) const noexc
     return HasFocus(controlId) && !HasActiveControl() && (_inputState.enterPressed || _inputState.spacePressed);
 }
 
+bool UiContext::IsSliderKeyboardAdjustmentAllowed(const UiId& controlId) const noexcept
+{
+    return HasFocus(controlId) && !HasActiveControl() && (_inputState.leftArrowPressed || _inputState.rightArrowPressed);
+}
+
 bool UiContext::GetBooleanState(const UiId& controlId) const
 {
     const auto booleanState = _booleanStates.find(controlId);
@@ -863,6 +892,12 @@ float UiContext::GetClampedNumericState(const UiId& controlId, float defaultValu
     const float value = ClampLayoutValue(GetNumericState(controlId, defaultValue), normalizedMinimum, normalizedMaximum);
     SetNumericState(controlId, value);
     return value;
+}
+
+float UiContext::GetSliderKeyboardStep(float minimumValue, float maximumValue) const noexcept
+{
+    const float range = std::max(0.0f, maximumValue - minimumValue);
+    return range / SliderKeyboardStepDivisor;
 }
 
 Rect UiContext::GetOutsetRectangle(const Rect& rectangle, float outset) const noexcept
