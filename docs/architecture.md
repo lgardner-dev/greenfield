@@ -17,7 +17,7 @@ Greenfield is organized around the Greenfield SDK: the reusable runtime and libr
 
 ## M5 Export And Target Vocabulary
 
-The current repository has vocabulary for export and target planning plus one minimal illustrative C++/CMake app-template scaffold. It does not yet implement generated app projects, install rules, package rules, CLI export behavior, Windows-specific export workflows, or browser-hosted WebAssembly builds.
+The current repository has vocabulary for export and target planning plus a supported source-tree consumer contract. It does not yet implement generated app projects, install rules, package rules, CLI export behavior, Windows-specific export workflows, or browser-hosted WebAssembly builds.
 
 - Host platform: the operating environment and platform provider an app runs on. The current interactive host path is SDL desktop through `greenfield_sdl_platform`.
 - Renderer backend choice: composition-root policy that selects a renderer implementation. The sandbox currently exposes `--renderer=webgpu` and `--renderer=fast2d`.
@@ -25,9 +25,48 @@ The current repository has vocabulary for export and target planning plus one mi
 - App target: the executable or equivalent CMake target produced by an app project.
 - Build/export target: the requested output platform or delivery direction for an app project, such as Linux desktop today and Windows or browser-hosted WebAssembly as future v0.1 considerations.
 - Browser-hosted WebAssembly: a future target direction that should preserve SDK/UI/runtime boundaries. It is not implemented by the current build.
-- App template scaffold: `templates/cpp-cmake-app` documents the intended future exported-app shape without being included in the root build or implementing export tooling.
+- Source-tree app template: `templates/cpp-cmake-app` is a working source-tree consumer template. It is not included in the root build and does not implement export tooling.
 
 Reusable SDK, UI, runtime, surface, and export vocabulary must not directly depend on SDL, Dawn/WebGPU, or FreeType. Concrete composition roots may wire platform and renderer backend targets together when they produce an app target.
+
+## M7B Source-Tree Consumer Contract
+
+The supported consumer model is source-tree integration. A consumer CMake project receives `GREENFIELD_SOURCE_DIR`, validates that it points at a Greenfield checkout, and calls:
+
+```cmake
+add_subdirectory("${GREENFIELD_SOURCE_DIR}" greenfield-build EXCLUDE_FROM_ALL)
+```
+
+The consumer then links supported Greenfield targets directly. `templates/cpp-cmake-app` and `consumers/source-tree-fast2d` are validated this way from separate build trees.
+
+The current default dependency path also requires the Greenfield toolchain and manifest when configuring a separate consumer:
+
+```bash
+cmake -S <consumer-source> -B <consumer-build> \
+    -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
+    -DCMAKE_TOOLCHAIN_FILE=/path/to/greenfield/cmake/vcpkg-toolchain.cmake \
+    -DVCPKG_MANIFEST_DIR=/path/to/greenfield
+```
+
+The current top-level project still requires SDL3, Dawn/WebGPU, and FreeType during configure because those dependencies are part of the current target topology. M7B does not make those dependencies optional and does not add install/export packaging.
+
+Consumer-facing SDK/runtime targets today are:
+
+- `greenfield_core`
+- `greenfield_render`
+- `greenfield_ui`
+- `greenfield_platform`
+
+Concrete composition-root dependency targets are:
+
+- `greenfield_render_fast2d`
+- `greenfield_render_webgpu`
+- `greenfield_webgpu`
+- `greenfield_sdl_platform`
+
+`greenfield_sandbox` is demo/internal-only. Consumers must not link it or depend on files under `apps/sandbox`.
+
+The current include path is broad because targets expose the project root. M7B documents target and layer intent, but it does not reorganize headers, add include-prefix migration, or create a curated public include directory. Headers under `apps/sandbox` are not consumer-facing. Concrete backend/platform headers are consumer-facing only when the consumer intentionally links the matching composition-root dependency target.
 
 ## Layer Overview
 
@@ -233,9 +272,9 @@ The sandbox accepts `--renderer=webgpu` and `--renderer=fast2d`. The default `we
 
 Application code may know about concrete implementations because it is the composition root. Shared engine layers should not take dependencies back on the sandbox.
 
-`apps/sandbox` is not an exported app template. Future generated or exported apps should consume SDK/runtime targets, define their own app target, and choose their own composition-root policy for host platform and renderer backend wiring.
+`apps/sandbox` is not an exported app template. Source-tree consumers and future generated or exported apps should consume SDK/runtime targets, define their own app target, and choose their own composition-root policy for host platform and renderer backend wiring.
 
-`templates/cpp-cmake-app` is a minimal scaffold for that future shape. It is separate from `apps/sandbox`, expects SDK/runtime targets to be supplied by a containing workspace or future package/export mechanism, and leaves concrete SDL/WebGPU/Fast2D wiring to the app composition root.
+`templates/cpp-cmake-app` is a minimal working source-tree consumer template for that shape. It is separate from `apps/sandbox`, receives `GREENFIELD_SOURCE_DIR`, uses source-tree `add_subdirectory`, and wires Fast2D as its tiny headless renderer choice.
 
 ## Current CMake Target Shape
 
@@ -253,9 +292,11 @@ The top-level build currently defines these targets:
 
 The sandbox app target links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu`. This is acceptable because the sandbox is the composition root. That wiring should not move into renderer-neutral commands, UI widgets, platform interfaces, SDK surface vocabulary, or future export vocabulary.
 
-Tests currently cover core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, and dependency boundaries. The dependency boundary test guards reusable SDK-facing files from direct SDL, Dawn/WebGPU, and FreeType includes.
+The SDK/runtime consumer-facing targets are `greenfield_core`, `greenfield_render`, `greenfield_ui`, and `greenfield_platform`. Concrete composition-root dependency targets are `greenfield_render_fast2d`, `greenfield_render_webgpu`, `greenfield_webgpu`, and `greenfield_sdl_platform`. `greenfield_sandbox` is demo/internal-only.
 
-Tests also include a narrow `templates/cpp-cmake-app` guardrail. It checks scaffold structure, truthful M5 limit language, absence of concrete platform/render/font includes in the template app source, and the intended standalone CMake failure when SDK/runtime targets are not available. It does not build the template as an app target or implement export behavior.
+Tests currently cover core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, dependency boundaries, and source-tree consumer validation. The dependency boundary test guards reusable SDK-facing files from direct SDL, Dawn/WebGPU, and FreeType includes.
+
+Tests also include narrow source-tree guardrails for `templates/cpp-cmake-app` and `consumers/source-tree-fast2d`. They check truthful contract language, absence of sandbox/package coupling, absence of forbidden concrete includes in consumer/template sources, and configure/build/run both projects from separate build trees. They do not implement install/export packaging.
 
 ## Dependency Direction
 

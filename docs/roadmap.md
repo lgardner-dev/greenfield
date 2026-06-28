@@ -40,17 +40,17 @@ M6D adds the narrow SDL CPU raster presenter and opt-in visible Fast2D sandbox p
 
 M5 is the export and target foundation.
 
-Current M5 work is vocabulary, boundary alignment, and one minimal illustrative C++/CMake app-template scaffold. It defines how Greenfield talks about host platforms, renderer backend choice, app projects, app targets, build/export targets, and browser-hosted WebAssembly as a future target direction.
+Current M5/M7 work is vocabulary, boundary alignment, source-tree consumer validation, and one minimal working C++/CMake app template. It defines how Greenfield talks about host platforms, renderer backend choice, app projects, app targets, build/export targets, and browser-hosted WebAssembly as a future target direction.
 
 For this slice, exported apps are future C++/CMake-based app projects that consume Greenfield SDK/runtime targets. Exported apps are not the sandbox. `apps/sandbox` remains a demo and composition root that wires current SDK/UI/platform/renderer targets together.
 
 Future generated or exported apps should provide their own composition-root policy. That policy may wire concrete SDL, WebGPU, or Fast2D targets, but reusable SDK/UI/runtime/surface/export vocabulary should not directly depend on SDL, Dawn/WebGPU, or FreeType.
 
-`templates/cpp-cmake-app` is a narrow scaffold for the intended exported-app shape. It is not included in the root build and does not make `apps/sandbox` a product template.
+`templates/cpp-cmake-app` is a narrow working source-tree consumer template for the intended exported-app shape. It is not included in the root build and does not make `apps/sandbox` a product template.
 
-A small CTest guardrail validates the scaffold structure and expected standalone CMake stop. It protects the M5 contract without adding a generator, package, install flow, or export pipeline.
+M7A added an in-tree external-style Fast2D source-tree consumer under `consumers/source-tree-fast2d`. M7B upgrades the template to the same explicit `GREENFIELD_SOURCE_DIR` source-tree model and documents supported target categories. CTest configures, builds, and runs both source-tree consumers from separate build trees.
 
-M5 does not yet add generated projects, CLI behavior, install rules, package/export logic, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
+M5/M7B does not yet add generated projects, CLI behavior, install rules, package/export logic, `find_package(Greenfield)`, package config files, public bootstrap APIs, optional Dawn/WebGPU/FreeType behavior, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
 
 ## M6A
 
@@ -153,7 +153,8 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 - v0.1 release/export awareness includes Linux, Windows, and browser-hosted WebAssembly.
 - Exported apps should be C++/CMake-based first.
 - Exported apps should consume SDK/runtime targets and define their own app targets rather than treating `apps/sandbox` as a product template.
-- The current C++/CMake app-template scaffold is illustrative only; future tooling may generate, copy, or replace it.
+- The current C++/CMake app template is a working source-tree consumer using `GREENFIELD_SOURCE_DIR`; future tooling may generate, copy, or replace it.
+- Install/export packaging, `find_package(Greenfield)`, package config files, and public app bootstrap APIs remain future work.
 - Fast incremental build UX matters more than hot reload.
 - Browser-hosted WASM is a future target direction for exported apps, but it should not be implemented in current M4/M5 foundation work unless explicitly requested.
 
@@ -189,7 +190,7 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 - Python bindings
 - Skia integration
 - WASM implementation work
-- App template generation beyond the current illustrative scaffold
+- App template generation beyond the current working source-tree template
 - Install, package, or export rule implementation
 - Windows-specific export workflow implementation
 - Full text editor behavior beyond the current narrow TextInput foundation

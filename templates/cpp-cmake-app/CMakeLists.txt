@@ -2,35 +2,26 @@ cmake_minimum_required(VERSION 3.24)
 
 project(GreenfieldCppCmakeApp LANGUAGES CXX)
 
+if(NOT DEFINED GREENFIELD_SOURCE_DIR)
+    message(FATAL_ERROR "GREENFIELD_SOURCE_DIR is required for source-tree Greenfield consumption.")
+endif()
+
+if(NOT EXISTS "${GREENFIELD_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "GREENFIELD_SOURCE_DIR does not point at a Greenfield source tree: ${GREENFIELD_SOURCE_DIR}")
+endif()
+
+add_subdirectory("${GREENFIELD_SOURCE_DIR}" greenfield-build EXCLUDE_FROM_ALL)
+
 add_executable(greenfield_template_app
     src/main.cpp
 )
 
 target_compile_features(greenfield_template_app PRIVATE cxx_std_20)
 
-# M5 does not install, package, export, or generate Greenfield SDK targets yet.
-# A future exported workspace, vendored SDK checkout, or package/export mechanism
-# should make these targets available before this template target is linked.
-if(NOT TARGET greenfield_core OR NOT TARGET greenfield_render OR NOT TARGET greenfield_ui)
-    message(FATAL_ERROR
-        "Greenfield SDK/runtime targets are not available. "
-        "This template is a scaffold for a future exported workspace, not a standalone build."
-    )
-endif()
-
 target_link_libraries(greenfield_template_app
     PRIVATE
         greenfield_core
         greenfield_render
         greenfield_ui
+        greenfield_render_fast2d
 )
-
-# The app owns concrete composition-root policy. A future generated or hand-authored
-# app may link platform and renderer targets such as these when the chosen target
-# workspace provides them:
-#
-# target_link_libraries(greenfield_template_app
-#     PRIVATE
-#         greenfield_sdl_platform
-#         greenfield_render_webgpu
-# )

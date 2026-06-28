@@ -21,17 +21,23 @@ endforeach()
 
 file(READ "${_template_dir}/README.md" _template_readme)
 file(READ "${_template_dir}/CMakeLists.txt" _template_cmake)
+file(READ "${_template_dir}/src/main.cpp" _template_main)
 
 set(_required_readme_fragments
     "not a project generator"
     "root Greenfield build does not include this template automatically"
     "C++/CMake-first app project"
     "Separate from `apps/sandbox`"
-    "Consumes Greenfield SDK/runtime targets"
+    "GREENFIELD_SOURCE_DIR"
+    "add_subdirectory"
+    "greenfield_core"
+    "greenfield_render"
+    "greenfield_ui"
+    "greenfield_render_fast2d"
     "Linux as the current primary development path"
     "Windows and browser-hosted WebAssembly as future target/export considerations"
-    "M5 does not implement a CLI"
-    "browser-hosted WebAssembly support"
+    "does not implement install rules"
+    "find_package(Greenfield)"
 )
 
 foreach(_required_fragment IN LISTS _required_readme_fragments)
@@ -43,15 +49,14 @@ endforeach()
 
 set(_required_cmake_fragments
     "project(GreenfieldCppCmakeApp LANGUAGES CXX)"
+    "GREENFIELD_SOURCE_DIR is required"
+    [[add_subdirectory("${GREENFIELD_SOURCE_DIR}" greenfield-build EXCLUDE_FROM_ALL)]]
     "add_executable(greenfield_template_app"
     "target_compile_features(greenfield_template_app PRIVATE cxx_std_20)"
-    "Greenfield SDK/runtime targets are not available"
-    "not a standalone build"
     "greenfield_core"
     "greenfield_render"
     "greenfield_ui"
-    "greenfield_sdl_platform"
-    "greenfield_render_webgpu"
+    "greenfield_render_fast2d"
 )
 
 foreach(_required_fragment IN LISTS _required_cmake_fragments)
@@ -77,6 +82,22 @@ foreach(_forbidden_pattern IN LISTS _forbidden_template_patterns)
     endif()
 endforeach()
 
+set(_forbidden_template_fragments
+    "apps/sandbox"
+    "greenfield_sandbox"
+    "greenfield_sdl_platform"
+    "greenfield_render_webgpu"
+    "find_package(Greenfield"
+)
+
+foreach(_forbidden_fragment IN LISTS _forbidden_template_fragments)
+    string(FIND "${_template_cmake}" "${_forbidden_fragment}" _cmake_fragment_position)
+    string(FIND "${_template_main}" "${_forbidden_fragment}" _main_fragment_position)
+    if(NOT _cmake_fragment_position EQUAL -1 OR NOT _main_fragment_position EQUAL -1)
+        message(FATAL_ERROR "Template contains out-of-scope dependency or packaging behavior: ${_forbidden_fragment}")
+    endif()
+endforeach()
+
 set(_forbidden_include_pattern "^[ \t]*#[ \t]*include[ \t]*[<\"][^>\"]*(SDL|SDL3|SDL\\.h|dawn|webgpu|wgpu|ft2build\\.h|freetype|FT_)")
 file(STRINGS "${_template_dir}/src/main.cpp" _forbidden_includes REGEX "${_forbidden_include_pattern}")
 if(_forbidden_includes)
@@ -85,25 +106,64 @@ if(_forbidden_includes)
 endif()
 
 set(_template_check_build_dir "${GREENFIELD_BINARY_DIR}/template-cpp-cmake-app-check")
+set(_template_executable "${_template_check_build_dir}/bin/greenfield_template_app")
 file(REMOVE_RECURSE "${_template_check_build_dir}")
 
+set(_template_configure_command
+    "${CMAKE_COMMAND}"
+    -S "${_template_dir}"
+    -B "${_template_check_build_dir}"
+    "-DGREENFIELD_SOURCE_DIR=${GREENFIELD_SOURCE_DIR}"
+    "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${_template_check_build_dir}/bin"
+)
+
+if(DEFINED GREENFIELD_CMAKE_TOOLCHAIN_FILE AND NOT "${GREENFIELD_CMAKE_TOOLCHAIN_FILE}" STREQUAL "")
+    list(APPEND _template_configure_command "-DCMAKE_TOOLCHAIN_FILE=${GREENFIELD_CMAKE_TOOLCHAIN_FILE}")
+endif()
+
+if(EXISTS "${GREENFIELD_SOURCE_DIR}/vcpkg.json")
+    list(APPEND _template_configure_command "-DVCPKG_MANIFEST_DIR=${GREENFIELD_SOURCE_DIR}")
+endif()
+
+if(DEFINED GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES)
+    list(APPEND _template_configure_command "-DGREENFIELD_ALLOW_SYSTEM_DEPENDENCIES=${GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES}")
+endif()
+
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" -S "${_template_dir}" -B "${_template_check_build_dir}"
+    COMMAND ${_template_configure_command}
     RESULT_VARIABLE _template_configure_result
     OUTPUT_VARIABLE _template_configure_output
     ERROR_VARIABLE _template_configure_error
 )
 
-if(_template_configure_result EQUAL 0)
-    message(FATAL_ERROR "Template unexpectedly configured as a standalone project.")
+if(NOT _template_configure_result EQUAL 0)
+    message(FATAL_ERROR
+        "Template source-tree configure failed:\n${_template_configure_output}\n${_template_configure_error}"
+    )
 endif()
 
-set(_template_configure_text "${_template_configure_output}\n${_template_configure_error}")
-string(FIND "${_template_configure_text}" "Greenfield SDK/runtime targets are not available" _missing_targets_position)
-string(FIND "${_template_configure_text}" "not a standalone build" _standalone_guardrail_position)
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" --build "${_template_check_build_dir}" --target greenfield_template_app
+    RESULT_VARIABLE _template_build_result
+    OUTPUT_VARIABLE _template_build_output
+    ERROR_VARIABLE _template_build_error
+)
 
-if(_missing_targets_position EQUAL -1 OR _standalone_guardrail_position EQUAL -1)
+if(NOT _template_build_result EQUAL 0)
     message(FATAL_ERROR
-        "Template standalone configure failed for an unexpected reason:\n${_template_configure_text}"
+        "Template source-tree build failed:\n${_template_build_output}\n${_template_build_error}"
+    )
+endif()
+
+execute_process(
+    COMMAND "${_template_executable}"
+    RESULT_VARIABLE _template_run_result
+    OUTPUT_VARIABLE _template_run_output
+    ERROR_VARIABLE _template_run_error
+)
+
+if(NOT _template_run_result EQUAL 0)
+    message(FATAL_ERROR
+        "Template source-tree run failed:\n${_template_run_output}\n${_template_run_error}"
     )
 endif()

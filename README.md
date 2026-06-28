@@ -25,7 +25,7 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
 - vcpkg manifest-mode as the default dependency path
-- Early M5 export/target vocabulary documentation and a minimal illustrative C++/CMake app-template scaffold, without install rules, packages, CLI behavior, or WASM implementation
+- M7B source-tree consumer contract documentation, a working C++/CMake app template, and CTest validation for separate source-tree consumers, without install rules, packages, CLI behavior, or WASM implementation
 
 ## Direction
 
@@ -43,10 +43,11 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M4/M5 foundation work.
 - Greenfield CLI is future tooling, not part of current M4/M5 foundation work.
 - Development can be Linux-first for v0.1 work, while preserving Linux, Windows, and browser-hosted WebAssembly as v0.1 release/export architecture considerations.
-- Exported Greenfield apps should be C++/CMake-based first.
-- Exported apps are future app projects, not the sandbox copied as a product template.
-- `apps/sandbox` is the current demo and composition root. Future exported apps should consume SDK/runtime targets and provide their own composition-root policy.
-- `templates/cpp-cmake-app` is a minimal illustrative scaffold for that future exported-app shape. It is not included in the root build and is not a working export pipeline.
+- Greenfield app consumers should be C++/CMake-based first.
+- App consumers are separate app projects, not the sandbox copied as a product template.
+- `apps/sandbox` is the current demo and composition root. App consumers should consume SDK/runtime targets and provide their own composition-root policy.
+- `templates/cpp-cmake-app` is a minimal working source-tree consumer template. It is not included in the root build and is not an install/export pipeline.
+- `docs/consumer-contract.md` documents the supported source-tree consumer model, target categories, current broad header-surface posture, and deferred packaging work.
 - A composition root may wire concrete host platform and renderer backend targets such as SDL, WebGPU, or Fast2D. Reusable SDK/UI/runtime/surface/export vocabulary should stay independent from SDL, Dawn/WebGPU, and FreeType.
 - Hot reload is not a core v0.1 requirement; fast incremental build UX matters more.
 
@@ -54,13 +55,13 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 The current renderer-selection and Fast2D presentation work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Fast2D text rasterization, rich text shaping, shared text/font architecture, antialiasing, vector paths, transforms, gradients, visual regression CI, full WebGPU visual parity, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
 
-M5 export/target foundation work currently includes vocabulary and one minimal illustrative C++/CMake app-template scaffold. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
+M7B consumer-contract work currently includes source-tree integration vocabulary, one minimal working C++/CMake app template, and an external-style Fast2D consumer validation. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
 
 M6F/M6G/M6H/M6I UI control work currently includes Button, Checkbox, Toggle/Switch, Slider, and a narrow single-line TextInput. Checkbox and Toggle/Switch preserve `UiId`-keyed persistent boolean state. Slider adds private `UiId`-keyed numeric state, returns `true` only when the current frame changes the value, emits renderer-neutral track/fill/thumb/label commands, supports click-to-set and drag-while-captured behavior, clamps values, and safely handles reversed or degenerate ranges. TextInput adds private `UiId`-keyed persistent text state, click-to-focus, focused append-only committed text, focused Backspace-at-end behavior, and returns `true` only when the final persisted text changes during the current frame. Existing immediate-mode controls participate in platform-neutral keyboard focus traversal: Tab and Shift+Tab move through the current frame's Button, Checkbox, Toggle/Switch, Slider, and TextInput encounter order. Keyboard focus is visible through configurable `FocusStyle` data on Button, Checkbox, Toggle/Switch, Slider, and TextInput styles rather than hardcoded renderer or platform rules. Focused controls emit renderer-neutral outer-ring rectangle commands around the button bounds, checkbox box bounds, toggle track bounds, slider track bounds, or text-input bounds. Focused Slider also responds to platform-neutral Left/Right arrow edge fields: Left decreases value, Right increases value, the step is a narrow internal increment based on the effective normalized range, values clamp to normalized min/max bounds, reversed ranges remain safe through normalization, degenerate ranges remain safe without false changes, and Slider returns `true` only when the value actually changes during the frame. TextInput does not add generic Enter/Space activation, cursor movement, arbitrary insertion, selection, clipboard, IME, multiline editing, validation, undo/redo, or grapheme-aware deletion. A small sandbox Slider example and one small TextInput example exist for manual visual verification. Screenshot capture has been proven as a local development workflow artifact, but screenshots are not committed project artifacts or required automated test outputs. WebGPU currently renders text through its backend-local FreeType path, while Fast2D still defers text and therefore does not yet display TextInput text in the visible Fast2D path. M6F/M6G/M6H/M6I do not add key repeat policy, a full shortcut/keybinding system, an input action system, character input editing beyond focused committed text append and Backspace-at-end, IME, clipboard, selection, accessibility, modal focus traps, retained UI trees, a full event dispatch system, spatial navigation, gamepad navigation, dropdowns, tabs, modals, toasts, tooltips, a compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ## Current Build Shape
 
-The current CMake project defines reusable SDK/runtime-style targets and one sandbox executable:
+The current CMake project defines reusable SDK/runtime-style targets, concrete backend/platform targets, and one sandbox executable:
 
 - `greenfield_core`: interface target for core value types.
 - `greenfield_render`: interface target for renderer-neutral render commands and renderer interfaces.
@@ -74,11 +75,28 @@ The current CMake project defines reusable SDK/runtime-style targets and one san
 
 `greenfield_sandbox` links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu`. It is a demo composition root, so it may know about concrete SDL, WebGPU, and Fast2D targets while the reusable SDK layers remain independent of those concrete providers.
 
+Supported SDK/runtime consumer-facing targets today are `greenfield_core`, `greenfield_render`, `greenfield_ui`, and `greenfield_platform`. Concrete composition-root dependency targets are `greenfield_render_fast2d`, `greenfield_render_webgpu`, `greenfield_webgpu`, and `greenfield_sdl_platform`. `greenfield_sandbox` is demo/internal-only and is not a supported consumer dependency.
+
 The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `clean`, and `format`. The current CMake presets are `dev` and `release` for configure, build, and test flows. No generated export project, install/package/export workflow, Windows-specific workflow, or WASM-specific workflow exists yet in this repository.
 
-The repository also contains `templates/cpp-cmake-app`, a small non-invasive scaffold that documents the intended future shape of a C++/CMake exported app. It is not automatically included by the root build.
+The repository also contains `templates/cpp-cmake-app`, a small working source-tree consumer template. It is not automatically included by the root build.
 
-CTest includes a narrow template guardrail that checks the scaffold files, expected M5 limit language, and the intended standalone CMake stop when SDK/runtime targets are unavailable. This validates the scaffold contract without making it part of the normal app build.
+CTest includes narrow source-tree consumer guardrails that configure, build, and run both `templates/cpp-cmake-app` and `consumers/source-tree-fast2d` in separate build trees. This validates the source-tree consumer contract without making either project part of the normal app build.
+
+## Source-Tree Consumers
+
+The supported consumer model is source-tree integration. A consumer project receives `GREENFIELD_SOURCE_DIR`, validates it, calls `add_subdirectory("${GREENFIELD_SOURCE_DIR}" greenfield-build EXCLUDE_FROM_ALL)`, and links supported Greenfield targets.
+
+When using the default dependency path, configure consumers with the Greenfield toolchain and manifest:
+
+```bash
+cmake -S templates/cpp-cmake-app -B build/template-cpp-cmake-app \
+    -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
+    -DCMAKE_TOOLCHAIN_FILE=/path/to/greenfield/cmake/vcpkg-toolchain.cmake \
+    -DVCPKG_MANIFEST_DIR=/path/to/greenfield
+```
+
+The current top-level target topology still requires SDL3, Dawn/WebGPU, and FreeType during configure. M7B does not implement optional dependency behavior, install/export packaging, or `find_package(Greenfield)`. See `docs/consumer-contract.md` for the full contract.
 
 ## Export Vocabulary
 
