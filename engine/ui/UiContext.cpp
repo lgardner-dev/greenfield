@@ -16,6 +16,7 @@ constexpr float CheckboxHorizontalGap{10.0f};
 constexpr float CheckboxIndicatorInset{5.0f};
 constexpr float ToggleHorizontalGap{10.0f};
 constexpr float SliderHorizontalGap{10.0f};
+constexpr float TextInputVerticalTextInsetAdjustment{2.0f};
 constexpr float MouseWheelScrollPixels{42.0f};
 constexpr float SliderKeyboardStepDivisor{20.0f};
 
@@ -562,6 +563,72 @@ bool UiContext::Slider(const std::string& name, const std::string& label, const 
     return changed;
 }
 
+bool UiContext::TextInput(const std::string& name)
+{
+    return TextInput(name, TextInputStyle{});
+}
+
+bool UiContext::TextInput(const std::string& name, const TextInputStyle& textInputStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(Vec2{});
+    return TextInput(name, bounds, textInputStyle);
+}
+
+bool UiContext::TextInput(const std::string& name, const Vec2& itemSize, const TextInputStyle& textInputStyle)
+{
+    const Rect bounds = GetNextLayoutBounds(itemSize);
+    return TextInput(name, bounds, textInputStyle);
+}
+
+bool UiContext::TextInput(const std::string& name, const Rect& bounds)
+{
+    return TextInput(name, bounds, TextInputStyle{});
+}
+
+bool UiContext::TextInput(const std::string& name, const Rect& bounds, const TextInputStyle& textInputStyle)
+{
+    const UiId textInputId = MakeUiId(name);
+    RegisterFocusableControl(textInputId);
+    const bool isHovered = ContainsPoint(bounds, _inputState.mousePosition);
+    if (isHovered && _inputState.leftMouseButtonPressed && !HasActiveControl() && !IsMousePressConsumed())
+    {
+        RequestFocus(textInputId);
+        CaptureControl(textInputId);
+        ConsumeMousePress();
+    }
+
+    const std::string previousText = GetTextState(textInputId);
+    std::string currentText = previousText;
+    if (IsTextInputEditingAllowed(textInputId))
+    {
+        if (!_inputState.committedText.empty())
+        {
+            currentText += _inputState.committedText;
+        }
+
+        if (_inputState.backspacePressed && !currentText.empty())
+        {
+            currentText.pop_back();
+        }
+    }
+
+    const bool changed = currentText != previousText;
+    if (changed)
+    {
+        SetTextState(textInputId, currentText);
+    }
+
+    DrawTextInput(textInputId, bounds, textInputStyle);
+
+    if (IsControlActive(textInputId) && _inputState.leftMouseButtonReleased)
+    {
+        ConsumeMouseRelease();
+        ReleaseActiveControl();
+    }
+
+    return changed;
+}
+
 const RenderCommandList& UiContext::EndFrame()
 {
     ApplyFocusTraversal();
@@ -848,6 +915,11 @@ bool UiContext::IsSliderKeyboardAdjustmentAllowed(const UiId& controlId) const n
     return HasFocus(controlId) && !HasActiveControl() && (_inputState.leftArrowPressed || _inputState.rightArrowPressed);
 }
 
+bool UiContext::IsTextInputEditingAllowed(const UiId& controlId) const noexcept
+{
+    return HasFocus(controlId) && (!HasActiveControl() || IsControlActive(controlId));
+}
+
 bool UiContext::GetBooleanState(const UiId& controlId) const
 {
     const auto booleanState = _booleanStates.find(controlId);
@@ -892,6 +964,22 @@ float UiContext::GetClampedNumericState(const UiId& controlId, float defaultValu
     const float value = ClampLayoutValue(GetNumericState(controlId, defaultValue), normalizedMinimum, normalizedMaximum);
     SetNumericState(controlId, value);
     return value;
+}
+
+std::string UiContext::GetTextState(const UiId& controlId) const
+{
+    const auto textState = _textStates.find(controlId);
+    if (textState == _textStates.end())
+    {
+        return {};
+    }
+
+    return textState->second;
+}
+
+void UiContext::SetTextState(const UiId& controlId, const std::string& value)
+{
+    _textStates[controlId] = value;
 }
 
 float UiContext::GetSliderKeyboardStep(float minimumValue, float maximumValue) const noexcept
@@ -1038,6 +1126,22 @@ Color UiContext::GetSliderTrackColor(const UiId& sliderId, const Rect& bounds,
     }
 
     return sliderStyle.trackFill;
+}
+
+Color UiContext::GetTextInputColor(const UiId& textInputId, const Rect& bounds,
+                                   const TextInputStyle& textInputStyle) const
+{
+    if (IsControlActive(textInputId) && _inputState.leftMouseButtonDown)
+    {
+        return textInputStyle.hoveredFillColor;
+    }
+
+    if (ContainsPoint(bounds, _inputState.mousePosition))
+    {
+        return textInputStyle.hoveredFillColor;
+    }
+
+    return textInputStyle.fillColor;
 }
 
 float UiContext::GetNormalizedSliderValue(float value, float minimumValue, float maximumValue) const noexcept
@@ -1227,6 +1331,37 @@ void UiContext::DrawSlider(const UiId& sliderId, const std::string& label, const
             },
     };
     DrawText(label, labelBounds, sliderStyle.fontSize, sliderStyle.textColor);
+}
+
+void UiContext::DrawTextInput(const UiId& textInputId, const Rect& bounds, const TextInputStyle& textInputStyle)
+{
+    if (HasFocus(textInputId))
+    {
+        DrawFocusRing(bounds, textInputStyle.cornerRadius, textInputStyle.focus);
+    }
+
+    DrawRectangle(bounds,
+                  RectangleStyle{
+                      .fillColor = GetTextInputColor(textInputId, bounds, textInputStyle),
+                      .cornerRadius = textInputStyle.cornerRadius,
+                      .borderColor = textInputStyle.borderColor,
+                      .borderThickness = textInputStyle.borderThickness,
+                  });
+
+    const Rect textBounds{
+        .position =
+            Vec2{
+                .x = bounds.position.x + textInputStyle.horizontalTextInset,
+                .y = bounds.position.y + (bounds.size.y - textInputStyle.fontSize) * 0.5f -
+                     TextInputVerticalTextInsetAdjustment,
+            },
+        .size =
+            Vec2{
+                .x = std::max(0.0f, bounds.size.x - textInputStyle.horizontalTextInset * 2.0f),
+                .y = textInputStyle.fontSize * 1.4f,
+            },
+    };
+    DrawText(GetTextState(textInputId), textBounds, textInputStyle.fontSize, textInputStyle.textColor);
 }
 
 } // namespace greenfield

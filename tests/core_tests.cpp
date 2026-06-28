@@ -42,8 +42,8 @@ namespace
 {
     const greenfield::InputState inputState{};
     return inputState.verticalScrollDelta == 0.0f && !inputState.tabPressed && !inputState.shiftTabPressed &&
-           !inputState.enterPressed && !inputState.spacePressed && !inputState.leftArrowPressed &&
-           !inputState.rightArrowPressed;
+           !inputState.enterPressed && !inputState.spacePressed && !inputState.backspacePressed &&
+           !inputState.leftArrowPressed && !inputState.rightArrowPressed && inputState.committedText.empty();
 }
 
 [[nodiscard]] bool TestSurfaceIdDefaultsToInvalid()

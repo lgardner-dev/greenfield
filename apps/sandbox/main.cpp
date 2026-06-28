@@ -137,6 +137,20 @@ SliderStyle MakeRuntimeControlSliderStyle()
     };
 }
 
+TextInputStyle MakeRuntimeTextInputStyle()
+{
+    return TextInputStyle{
+        .fillColor = Color{0.050f, 0.065f, 0.085f, 0.94f},
+        .hoveredFillColor = Color{0.095f, 0.130f, 0.170f, 0.96f},
+        .borderColor = BorderColor,
+        .textColor = TextPrimaryColor,
+        .fontSize = 14.0f,
+        .cornerRadius = 10.0f,
+        .borderThickness = 1.0f,
+        .horizontalTextInset = 12.0f,
+    };
+}
+
 Rect MakeRectangle(float x, float y, float width, float height)
 {
     return Rect{
@@ -434,6 +448,11 @@ void DrawControlActionsPanel(UiContext& uiContext, const Rect& bounds, Dashboard
     }
 
     const Rect sliderBounds = MakeRectangle(bounds.position.x + 18.0f, bounds.position.y + bounds.size.y - 42.0f, bounds.size.x - 36.0f, 30.0f);
+    const Rect textInputBounds = MakeRectangle(bounds.position.x + 18.0f, bounds.position.y + bounds.size.y - 84.0f, bounds.size.x - 36.0f, 34.0f);
+    const bool endpointChanged = uiContext.TextInput("runtime-endpoint-input", textInputBounds, MakeRuntimeTextInputStyle());
+    (void)endpointChanged;
+    DrawText(uiContext, "Endpoint", textInputBounds.position.x, textInputBounds.position.y - 18.0f, 120.0f, 16.0f, 11.0f, TextSecondaryColor);
+
     const bool mixChanged =
         uiContext.Slider("runtime-mix-slider", "Mix", sliderBounds, 0.0f, 1.0f, MakeRuntimeControlSliderStyle());
     (void)mixChanged;

@@ -38,6 +38,16 @@ struct UiContextTestAccess
         uiContext.SetNumericState(controlId, value);
     }
 
+    [[nodiscard]] static std::string GetTextState(const UiContext& uiContext, const UiId& controlId)
+    {
+        return uiContext.GetTextState(controlId);
+    }
+
+    static void SetTextState(UiContext& uiContext, const UiId& controlId, const std::string& value)
+    {
+        uiContext.SetTextState(controlId, value);
+    }
+
     [[nodiscard]] static float GetClampedNumericState(UiContext& uiContext, const UiId& controlId,
                                                       float defaultValue, float minimum, float maximum)
     {
@@ -2214,6 +2224,264 @@ namespace
            UiContextTestAccess::GetNumericState(uiContext, MakeUiId("keyboard-slider"), 0.0f) == 1.0f;
 }
 
+[[nodiscard]] bool TestTextStateDefaultsToEmpty()
+{
+    using namespace greenfield;
+
+    const UiContext uiContext;
+    return UiContextTestAccess::GetTextState(uiContext, MakeUiId("missing-text-control")).empty();
+}
+
+[[nodiscard]] bool TestTextStatePersistsAcrossFrames()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const UiId controlId = MakeUiId("persistent-text-control");
+    UiContextTestAccess::SetTextState(uiContext, controlId, "seed");
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool changed = uiContext.TextInput("persistent-text-control",
+                                             Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& firstCommands = uiContext.EndFrame();
+    if (changed || firstCommands.Size() != 2U ||
+        UiContextTestAccess::GetTextState(uiContext, controlId) != "seed")
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool secondFrameChanged = uiContext.TextInput("persistent-text-control",
+                                                        Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& secondCommands = uiContext.EndFrame();
+    return !secondFrameChanged && secondCommands.Size() == 2U &&
+           UiContextTestAccess::GetTextState(uiContext, controlId) == "seed";
+}
+
+[[nodiscard]] bool TestTextStateIsIndependentPerUiId()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetTextState(uiContext, MakeUiId("first-text-control"), "alpha");
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool firstChanged =
+        uiContext.TextInput("first-text-control", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const bool secondChanged =
+        uiContext.TextInput("second-text-control", Rect{.position = Vec2{10.0f, 64.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !firstChanged && !secondChanged && commands.Size() == 3U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("first-text-control")) == "alpha" &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("second-text-control")).empty();
+}
+
+[[nodiscard]] bool TestFocusedTextInputAppendsCommittedText()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-text-input");
+    uiContext.BeginFrame(MakeLayout(), InputState{.committedText = "abc"});
+    const bool changed =
+        uiContext.TextInput("focused-text-input", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("focused-text-input")) == "abc" &&
+           commands.Commands()[2].type == RenderCommandType::DrawText &&
+           commands.Commands()[2].text == "abc";
+}
+
+[[nodiscard]] bool TestFocusedTextInputBackspaceRemovesLastCodeUnit()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetTextState(uiContext, MakeUiId("backspace-text-input"), "seed");
+    uiContext.RequestFocus("backspace-text-input");
+    uiContext.BeginFrame(MakeLayout(), InputState{.backspacePressed = true});
+    const bool changed =
+        uiContext.TextInput("backspace-text-input", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return changed && commands.Size() == 3U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("backspace-text-input")) == "see" &&
+           commands.Commands()[2].text == "see";
+}
+
+[[nodiscard]] bool TestTextInputReturnsTrueOnlyWhenTextChanges()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("steady-text-input");
+
+    uiContext.BeginFrame(MakeLayout());
+    const bool unchanged = uiContext.TextInput("steady-text-input",
+                                               Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& unchangedCommands = uiContext.EndFrame();
+    if (unchanged || unchangedCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.committedText = "x"});
+    const bool changed = uiContext.TextInput("steady-text-input",
+                                             Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& changedCommands = uiContext.EndFrame();
+    if (!changed || changedCommands.Size() != 3U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.backspacePressed = true});
+    const bool deleted = uiContext.TextInput("steady-text-input",
+                                             Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& deletedCommands = uiContext.EndFrame();
+    if (!deleted || deletedCommands.Size() != 2U)
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.backspacePressed = true});
+    const bool unchangedBackspace = uiContext.TextInput("steady-text-input",
+                                                        Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& finalCommands = uiContext.EndFrame();
+    return !unchangedBackspace && finalCommands.Size() == 2U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("steady-text-input")).empty();
+}
+
+[[nodiscard]] bool TestTextInputNetNoOpDoesNotReportChange()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("net-no-op-text-input");
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.backspacePressed = true, .committedText = "x"});
+    const bool unchanged = uiContext.TextInput("net-no-op-text-input",
+                                               Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& firstCommands = uiContext.EndFrame();
+    if (unchanged || firstCommands.Size() != 2U ||
+        !UiContextTestAccess::GetTextState(uiContext, MakeUiId("net-no-op-text-input")).empty())
+    {
+        return false;
+    }
+
+    UiContextTestAccess::SetTextState(uiContext, MakeUiId("net-no-op-text-input"), "seed");
+    uiContext.BeginFrame(MakeLayout(), InputState{.backspacePressed = true, .committedText = "x"});
+    const bool seededUnchanged =
+        uiContext.TextInput("net-no-op-text-input", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& secondCommands = uiContext.EndFrame();
+    return !seededUnchanged && secondCommands.Size() == 3U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("net-no-op-text-input")) == "seed" &&
+           secondCommands.Commands()[2].text == "seed";
+}
+
+[[nodiscard]] bool TestUnfocusedTextInputIgnoresCommittedTextAndBackspace()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    UiContextTestAccess::SetTextState(uiContext, MakeUiId("quiet-text-input"), "seed");
+    uiContext.RequestFocus("other-control");
+    uiContext.BeginFrame(MakeLayout(), InputState{.backspacePressed = true, .committedText = "abc"});
+    const bool changed =
+        uiContext.TextInput("quiet-text-input", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+
+    return !changed && commands.Size() == 2U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("quiet-text-input")) == "seed" &&
+           commands.Commands()[1].text == "seed";
+}
+
+[[nodiscard]] bool TestTextInputClickFocusesField()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    const Rect bounds{
+        .position = Vec2{10.0f, 20.0f},
+        .size = Vec2{180.0f, 36.0f},
+    };
+
+    uiContext.BeginFrame(MakeLayout(), InputState{
+                                           .mousePosition = Vec2{20.0f, 30.0f},
+                                           .leftMouseButtonDown = true,
+                                           .leftMouseButtonPressed = true,
+                                       });
+    const bool changedOnPress = uiContext.TextInput("click-focus-text-input", bounds);
+    const auto& pressCommands = uiContext.EndFrame();
+    if (changedOnPress || pressCommands.Size() != 2U || !uiContext.HasFocus("click-focus-text-input"))
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.committedText = "z"});
+    const bool changedOnType = uiContext.TextInput("click-focus-text-input", bounds);
+    const auto& typeCommands = uiContext.EndFrame();
+    return changedOnType && typeCommands.Size() == 3U &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("click-focus-text-input")) == "z";
+}
+
+[[nodiscard]] bool TestTextInputIgnoresEnterAndSpaceActivation()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("focused-text-input");
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.enterPressed = true, .spacePressed = true});
+    const bool changed =
+        uiContext.TextInput("focused-text-input", Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+    return !changed && commands.Size() == 2U && uiContext.HasFocus("focused-text-input") &&
+           UiContextTestAccess::GetTextState(uiContext, MakeUiId("focused-text-input")).empty();
+}
+
+[[nodiscard]] bool TestTextInputTabTraversalPreservesFocusOrder()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.BeginFrame(MakeLayout(), InputState{.tabPressed = true});
+    const bool buttonClicked = uiContext.Button("first-focusable",
+                                                Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{120.0f, 36.0f}});
+    const bool textChanged = uiContext.TextInput("second-focusable",
+                                                 Rect{.position = Vec2{10.0f, 64.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& firstCommands = uiContext.EndFrame();
+    if (buttonClicked || textChanged || firstCommands.Size() != 3U || !uiContext.HasFocus("first-focusable"))
+    {
+        return false;
+    }
+
+    uiContext.BeginFrame(MakeLayout(), InputState{.tabPressed = true});
+    const bool secondButtonClicked = uiContext.Button("first-focusable",
+                                                      Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{120.0f, 36.0f}});
+    const bool secondTextChanged = uiContext.TextInput("second-focusable",
+                                                       Rect{.position = Vec2{10.0f, 64.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& secondCommands = uiContext.EndFrame();
+    return !secondButtonClicked && !secondTextChanged && secondCommands.Size() == 4U &&
+           uiContext.HasFocus("second-focusable");
+}
+
+[[nodiscard]] bool TestShiftTabMovesFocusBackwardFromTextInput()
+{
+    using namespace greenfield;
+
+    UiContext uiContext;
+    uiContext.RequestFocus("second-focusable");
+    uiContext.BeginFrame(MakeLayout(), InputState{.shiftTabPressed = true});
+    const bool buttonClicked = uiContext.Button("first-focusable",
+                                                Rect{.position = Vec2{10.0f, 20.0f}, .size = Vec2{120.0f, 36.0f}});
+    const bool textChanged = uiContext.TextInput("second-focusable",
+                                                 Rect{.position = Vec2{10.0f, 64.0f}, .size = Vec2{180.0f, 36.0f}});
+    const auto& commands = uiContext.EndFrame();
+    return !buttonClicked && !textChanged && commands.Size() == 4U && uiContext.HasFocus("first-focusable");
+}
+
 [[nodiscard]] bool TestBooleanStatePersistsAcrossFrames()
 {
     using namespace greenfield;
@@ -2458,6 +2726,14 @@ int main()
         !TestFocusedSliderKeyboardAdjustmentDegenerateRangeReturnsFalse() ||
         !TestFocusedSliderKeyboardAdjustmentReturnsTrueOnlyWhenValueChanges() ||
         !TestFocusedSliderKeyboardAdjustmentIsIgnoredDuringMouseCapture() ||
+        !TestTextStateDefaultsToEmpty() || !TestTextStatePersistsAcrossFrames() ||
+        !TestTextStateIsIndependentPerUiId() || !TestFocusedTextInputAppendsCommittedText() ||
+        !TestFocusedTextInputBackspaceRemovesLastCodeUnit() ||
+        !TestTextInputReturnsTrueOnlyWhenTextChanges() ||
+        !TestTextInputNetNoOpDoesNotReportChange() ||
+        !TestUnfocusedTextInputIgnoresCommittedTextAndBackspace() ||
+        !TestTextInputClickFocusesField() || !TestTextInputIgnoresEnterAndSpaceActivation() ||
+        !TestTextInputTabTraversalPreservesFocusOrder() || !TestShiftTabMovesFocusBackwardFromTextInput() ||
         !TestBooleanStatePersistsAcrossFrames() ||
         !TestBooleanStateIsIndependentPerUiId() || !TestNumericStateDefaultsToProvidedValue() ||
         !TestNumericStatePersistsAcrossFrames() || !TestNumericStateIsIndependentPerUiId() ||

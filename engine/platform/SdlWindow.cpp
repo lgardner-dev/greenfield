@@ -71,6 +71,14 @@ SdlWindow::SdlWindow(std::string title, int width, int height, SdlWindowVisibili
         throw std::runtime_error(errorMessage);
     }
 
+    if (!SDL_TextInputActive(_window.get()) && !SDL_StartTextInput(_window.get()))
+    {
+        const std::string errorMessage = SDL_GetError();
+        _window.reset();
+        QuitSdlVideo();
+        throw std::runtime_error(errorMessage);
+    }
+
     UpdateWindowSize();
 }
 
@@ -118,6 +126,10 @@ void SdlWindow::PollEvents()
         else if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == SDL_GetWindowID(_window.get()))
         {
             HandleKeyDown(event.key.key, event.key.mod, event.key.repeat);
+        }
+        else if (event.type == SDL_EVENT_TEXT_INPUT && event.text.windowID == SDL_GetWindowID(_window.get()))
+        {
+            HandleTextInput(event.text.text);
         }
     }
 
@@ -214,8 +226,10 @@ void SdlWindow::BeginInputFrame()
     _inputState.shiftTabPressed = false;
     _inputState.enterPressed = false;
     _inputState.spacePressed = false;
+    _inputState.backspacePressed = false;
     _inputState.leftArrowPressed = false;
     _inputState.rightArrowPressed = false;
+    _inputState.committedText.clear();
 }
 
 void SdlWindow::HandleMouseMotion(float x, float y)
@@ -292,6 +306,12 @@ void SdlWindow::HandleKeyDown(unsigned int key, unsigned short modifiers, bool i
         return;
     }
 
+    if (key == SDLK_BACKSPACE)
+    {
+        _inputState.backspacePressed = true;
+        return;
+    }
+
     if (key == SDLK_LEFT)
     {
         _inputState.leftArrowPressed = true;
@@ -302,6 +322,16 @@ void SdlWindow::HandleKeyDown(unsigned int key, unsigned short modifiers, bool i
     {
         _inputState.rightArrowPressed = true;
     }
+}
+
+void SdlWindow::HandleTextInput(const char* text)
+{
+    if (text == nullptr || text[0] == '\0')
+    {
+        return;
+    }
+
+    _inputState.committedText += text;
 }
 
 void SdlWindow::UpdateWindowSize()

@@ -96,6 +96,19 @@ struct SliderStyle
     FocusStyle focus{};
 };
 
+struct TextInputStyle
+{
+    Color fillColor{0.12f, 0.14f, 0.18f, 1.0f};
+    Color hoveredFillColor{0.16f, 0.19f, 0.24f, 1.0f};
+    Color borderColor{0.68f, 0.78f, 0.92f, 0.45f};
+    Color textColor{0.92f, 0.96f, 1.0f, 1.0f};
+    float fontSize{18.0f};
+    float cornerRadius{8.0f};
+    float borderThickness{1.0f};
+    float horizontalTextInset{12.0f};
+    FocusStyle focus{};
+};
+
 struct RectangleStyle
 {
     Color fillColor{};
@@ -189,6 +202,11 @@ public:
                               float maximumValue, const SliderStyle& sliderStyle);
     [[nodiscard]] bool Slider(const std::string& name, const std::string& label, const Rect& bounds,
                               float minimumValue, float maximumValue, const SliderStyle& sliderStyle);
+    [[nodiscard]] bool TextInput(const std::string& name);
+    [[nodiscard]] bool TextInput(const std::string& name, const TextInputStyle& textInputStyle);
+    [[nodiscard]] bool TextInput(const std::string& name, const Vec2& itemSize, const TextInputStyle& textInputStyle);
+    [[nodiscard]] bool TextInput(const std::string& name, const Rect& bounds);
+    [[nodiscard]] bool TextInput(const std::string& name, const Rect& bounds, const TextInputStyle& textInputStyle);
     [[nodiscard]] const RenderCommandList& EndFrame();
 
     void SetStyle(const Style& style);
@@ -239,12 +257,17 @@ private:
     void MoveFocusBackward();
     [[nodiscard]] bool IsKeyboardActivationRequested(const UiId& controlId) const noexcept;
     [[nodiscard]] bool IsSliderKeyboardAdjustmentAllowed(const UiId& controlId) const noexcept;
+    [[nodiscard]] bool IsTextInputEditingAllowed(const UiId& controlId) const noexcept;
     [[nodiscard]] bool GetBooleanState(const UiId& controlId) const;
     void SetBooleanState(const UiId& controlId, bool value);
     void ToggleBooleanState(const UiId& controlId);
     [[nodiscard]] float GetNumericState(const UiId& controlId, float defaultValue) const;
     void SetNumericState(const UiId& controlId, float value);
     [[nodiscard]] float GetClampedNumericState(const UiId& controlId, float defaultValue, float minimum, float maximum);
+    [[nodiscard]] std::string GetTextState(const UiId& controlId) const;
+    void SetTextState(const UiId& controlId, const std::string& value);
+    [[nodiscard]] Color GetTextInputColor(const UiId& textInputId, const Rect& bounds,
+                                          const TextInputStyle& textInputStyle) const;
     [[nodiscard]] float GetSliderKeyboardStep(float minimumValue, float maximumValue) const noexcept;
     [[nodiscard]] Color GetButtonColor(const UiId& buttonId, const Rect& bounds,
                                        const ButtonStyle& buttonStyle) const;
@@ -271,6 +294,7 @@ private:
                     const ToggleStyle& toggleStyle);
     void DrawSlider(const UiId& sliderId, const std::string& label, const Rect& bounds, float minimumValue,
                     float maximumValue, const SliderStyle& sliderStyle);
+    void DrawTextInput(const UiId& textInputId, const Rect& bounds, const TextInputStyle& textInputStyle);
 
     friend struct UiContextTestAccess;
 
@@ -280,6 +304,7 @@ private:
     std::optional<UiId> _focusedControlId{};
     std::unordered_map<UiId, bool, UiIdHash> _booleanStates{};
     std::unordered_map<UiId, float, UiIdHash> _numericStates{};
+    std::unordered_map<UiId, std::string, UiIdHash> _textStates{};
     std::unordered_map<UiId, float, UiIdHash> _verticalScrollOffsets{};
 
     // Per-frame state is rebuilt by BeginFrame from the current layout and input snapshot.

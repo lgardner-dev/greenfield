@@ -52,6 +52,7 @@ private:
     void HandleMouseButtonUp(unsigned char button, float x, float y);
     void HandleMouseWheel(float x, float y, float verticalScrollDelta);
     void HandleKeyDown(unsigned int key, unsigned short modifiers, bool isRepeat);
+    void HandleTextInput(const char* text);
     void UpdateWindowSize();
 
     std::string _title;
