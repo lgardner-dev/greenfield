@@ -115,9 +115,30 @@ ctest --preset dev --output-on-failure
 ./build/dev/bin/greenfield_sandbox --renderer=webgpu
 ./build/dev/bin/greenfield_sandbox --renderer=fast2d
 ./build/dev/bin/greenfield_sandbox --renderer=fast2d --headless
+./build/dev/bin/greenfield_sandbox --renderer=fast2d --diagnostic
 ```
 
-`--renderer=webgpu` is the default interactive path. `--renderer=fast2d` runs the visible interactive Fast2D path through SDL CPU raster presentation. `--renderer=fast2d --headless` runs the one-frame diagnostic path and exits after reporting command/fill/text/raster diagnostics.
+`--renderer=webgpu` is the default interactive path. `--renderer=fast2d` runs the visible interactive Fast2D path through SDL CPU raster presentation. `--renderer=fast2d --headless` and `--renderer=fast2d --diagnostic` both run the same one-frame diagnostic path and exit after reporting command/fill/text/raster diagnostics.
+
+## Visual Verification
+
+Run `make build` and `make test` before manual sandbox checks.
+
+For local renderer verification, launch one or both interactive sandbox paths:
+
+```bash
+./build/dev/bin/greenfield_sandbox --renderer=webgpu --window-size=1280x720
+./build/dev/bin/greenfield_sandbox --renderer=fast2d --window-size=1280x720
+```
+
+In automation or a non-interactive shell, timeout-based launch checks are reasonable:
+
+```bash
+timeout 3s ./build/dev/bin/greenfield_sandbox --renderer=webgpu --window-size=1280x720
+timeout 3s ./build/dev/bin/greenfield_sandbox --renderer=fast2d --window-size=1280x720
+```
+
+Exit code `124` is expected when the interactive sandbox stays open until `timeout` stops it. Screenshot capture is optional and local-only. Screenshots are not committed artifacts and are not required CI artifacts.
 
 ## Developer Commands
 
