@@ -4,7 +4,7 @@ CONFIGURE_PRESET ?= dev
 BUILD_DIR ?= $(ROOT_DIR)/build/$(BUILD_PRESET)
 SANDBOX_BINARY := $(BUILD_DIR)/bin/greenfield_sandbox
 LOCAL_VCPKG_ROOT := $(ROOT_DIR)/.tools/vcpkg
-SOURCE_DIRS := "$(ROOT_DIR)/apps" "$(ROOT_DIR)/engine" "$(ROOT_DIR)/tests"
+SOURCE_DIRS := "$(ROOT_DIR)/apps" "$(ROOT_DIR)/consumers" "$(ROOT_DIR)/engine" "$(ROOT_DIR)/tests"
 SOURCE_FILES := $(shell find $(SOURCE_DIRS) \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) -print)
 
 .PHONY: bootstrap configure build run test clean format

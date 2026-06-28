@@ -100,6 +100,16 @@ if(BUILD_TESTING)
                 -P "${PROJECT_SOURCE_DIR}/cmake/CheckCppCmakeAppTemplate.cmake"
     )
 
+    add_test(
+        NAME greenfield_source_tree_fast2d_consumer_tests
+        COMMAND "${CMAKE_COMMAND}"
+                "-DGREENFIELD_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DGREENFIELD_BINARY_DIR=${PROJECT_BINARY_DIR}"
+                "-DGREENFIELD_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+                "-DGREENFIELD_ALLOW_SYSTEM_DEPENDENCIES=${GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/CheckSourceTreeFast2DConsumer.cmake"
+    )
+
     function(greenfield_add_test test_name source_file)
         add_executable(${test_name}
             ${source_file}
