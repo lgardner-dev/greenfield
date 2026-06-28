@@ -86,7 +86,7 @@ The current CMake project defines reusable SDK/runtime-style targets, concrete b
 
 Supported SDK/runtime consumer-facing targets today are `greenfield_core`, `greenfield_render`, `greenfield_ui`, and `greenfield_platform`. Concrete composition-root dependency targets are `greenfield_render_fast2d`, `greenfield_render_webgpu`, `greenfield_webgpu`, and `greenfield_sdl_platform`. `greenfield_sandbox` is demo/internal-only and is not a supported consumer dependency.
 
-The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `clean`, and `format`. The current CMake presets are `dev` and `release` for configure, build, and test flows. No generated export project, install/package/export workflow, Windows-specific workflow, or WASM-specific workflow exists yet in this repository.
+The current Makefile exposes `bootstrap`, `configure`, `build`, `run`, `test`, `clean`, and `format`. The current CMake presets are `dev`, `release`, and `headless-fast2d` for configure, build, and test flows. No generated export project, install/package/export workflow, Windows-specific workflow, or WASM-specific workflow exists yet in this repository.
 
 The repository also contains `templates/cpp-cmake-app`, a small working source-tree consumer template. It is not automatically included by the root build.
 
