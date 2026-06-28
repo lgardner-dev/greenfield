@@ -6,6 +6,10 @@ if(NOT DEFINED GREENFIELD_BINARY_DIR)
     message(FATAL_ERROR "GREENFIELD_BINARY_DIR is required.")
 endif()
 
+if(NOT DEFINED GREENFIELD_BUILD_PROFILE)
+    set(GREENFIELD_BUILD_PROFILE developer)
+endif()
+
 set(_consumer_dir "${GREENFIELD_SOURCE_DIR}/consumers/source-tree-fast2d")
 set(_consumer_build_dir "${GREENFIELD_BINARY_DIR}/source-tree-fast2d-consumer-check")
 set(_consumer_executable "${_consumer_build_dir}/bin/greenfield_source_tree_fast2d_consumer")
@@ -71,14 +75,15 @@ set(_consumer_configure_command
     -S "${_consumer_dir}"
     -B "${_consumer_build_dir}"
     "-DGREENFIELD_SOURCE_DIR=${GREENFIELD_SOURCE_DIR}"
+    "-DGREENFIELD_BUILD_PROFILE=${GREENFIELD_BUILD_PROFILE}"
     "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${_consumer_build_dir}/bin"
 )
 
-if(DEFINED GREENFIELD_CMAKE_TOOLCHAIN_FILE AND NOT "${GREENFIELD_CMAKE_TOOLCHAIN_FILE}" STREQUAL "")
+if(GREENFIELD_BUILD_PROFILE STREQUAL "developer" AND DEFINED GREENFIELD_CMAKE_TOOLCHAIN_FILE AND NOT "${GREENFIELD_CMAKE_TOOLCHAIN_FILE}" STREQUAL "")
     list(APPEND _consumer_configure_command "-DCMAKE_TOOLCHAIN_FILE=${GREENFIELD_CMAKE_TOOLCHAIN_FILE}")
 endif()
 
-if(EXISTS "${GREENFIELD_SOURCE_DIR}/vcpkg.json")
+if(GREENFIELD_BUILD_PROFILE STREQUAL "developer" AND EXISTS "${GREENFIELD_SOURCE_DIR}/vcpkg.json")
     list(APPEND _consumer_configure_command "-DVCPKG_MANIFEST_DIR=${GREENFIELD_SOURCE_DIR}")
 endif()
 

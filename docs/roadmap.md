@@ -48,9 +48,9 @@ Future generated or exported apps should provide their own composition-root poli
 
 `templates/cpp-cmake-app` is a narrow working source-tree consumer template for the intended exported-app shape. It is not included in the root build and does not make `apps/sandbox` a product template.
 
-M7A added an in-tree external-style Fast2D source-tree consumer under `consumers/source-tree-fast2d`. M7B upgrades the template to the same explicit `GREENFIELD_SOURCE_DIR` source-tree model and documents supported target categories. CTest configures, builds, and runs both source-tree consumers from separate build trees.
+M7A added an in-tree external-style Fast2D source-tree consumer under `consumers/source-tree-fast2d`. M7B upgrades the template to the same explicit `GREENFIELD_SOURCE_DIR` source-tree model and documents supported target categories. M7E adds a narrow two-profile build contract: `developer` remains the default dependency-complete SDL/WebGPU/Fast2D sandbox profile, while `headless-fast2d` configures and validates the dependency-light core/UI/Fast2D path without SDL3, Dawn/WebGPU, FreeType, or vcpkg. CTest configures, builds, and runs both source-tree consumers from separate build trees.
 
-M5/M7B does not yet add generated projects, CLI behavior, install rules, package/export logic, `find_package(Greenfield)`, package config files, public bootstrap APIs, optional Dawn/WebGPU/FreeType behavior, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
+M5/M7 does not yet add generated projects, CLI behavior, install rules, package/export logic, `find_package(Greenfield)`, package config files, public bootstrap APIs, package-consumer dependency discovery, Windows-specific export workflows, browser-hosted WebAssembly support, or changes to sandbox runtime behavior.
 
 ## M6A
 
@@ -163,7 +163,8 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 - Current default interactive sandbox renderer: Dawn/WebGPU through `greenfield_render_webgpu`.
 - Sandbox renderer selection: `--renderer=webgpu` or `--renderer=fast2d`.
 - Compatibility alias: `greenfield_webgpu` points to `greenfield_render_webgpu`.
-- Current default build requirement: Dawn/WebGPU and FreeType remain required because the sandbox still uses the WebGPU renderer.
+- Current default `developer` build requirement: SDL3, Dawn/WebGPU, and FreeType remain required because the sandbox uses SDL and keeps WebGPU as the default interactive renderer.
+- Current dependency-light profile: `headless-fast2d` excludes the SDL/WebGPU/sandbox targets and avoids SDL3, Dawn/WebGPU, FreeType, and vcpkg while validating core/UI/Fast2D source-tree use.
 - Implemented Fast2D foundation: `greenfield_render_fast2d`, limited to renderer-neutral command consumption, backend-local preparation, clipped CPU filled-rectangle rasterization, source-over alpha blending, hard-edged rectangular and rounded borders/fills, intersected nested clips, stable first visible SDL raster presentation, and deferred text.
 - Current Fast2D sandbox status: opt-in visibly interactive through SDL CPU raster presentation, with the one-frame diagnostic/headless path still available through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
 - Future default baseline direction: Greenfield-owned Fast2D after later composition and presentation work.

@@ -26,6 +26,17 @@
         "VCPKG_ROOT": "${sourceDir}/.tools/vcpkg",
         "GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES": "OFF"
       }
+    },
+    {
+      "name": "headless-fast2d",
+      "displayName": "Headless Fast2D",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/headless-fast2d",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GREENFIELD_BUILD_PROFILE": "headless-fast2d"
+      }
     }
   ],
   "buildPresets": [
@@ -36,6 +47,10 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "headless-fast2d",
+      "configurePreset": "headless-fast2d"
     }
   ],
   "testPresets": [
@@ -49,6 +64,13 @@
     {
       "name": "release",
       "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "headless-fast2d",
+      "configurePreset": "headless-fast2d",
       "output": {
         "outputOnFailure": true
       }

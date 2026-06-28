@@ -5,6 +5,11 @@ if(DEFINED CACHE{GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES})
     set(_greenfield_allow_system_dependencies "${GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES}")
 endif()
 
+if(DEFINED CACHE{GREENFIELD_BUILD_PROFILE} AND GREENFIELD_BUILD_PROFILE STREQUAL "headless-fast2d")
+    message(STATUS "GREENFIELD_BUILD_PROFILE is headless-fast2d. Continuing without vcpkg.")
+    return()
+endif()
+
 get_filename_component(_greenfield_source_dir "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(_greenfield_local_vcpkg_root "${_greenfield_source_dir}/.tools/vcpkg")
 

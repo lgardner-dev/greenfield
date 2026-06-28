@@ -1,5 +1,18 @@
 cmake_minimum_required(VERSION 3.24)
 
+set(GREENFIELD_BUILD_PROFILE "developer" CACHE STRING "Greenfield build profile: developer or headless-fast2d")
+set_property(CACHE GREENFIELD_BUILD_PROFILE PROPERTY STRINGS developer headless-fast2d)
+
+set(_greenfield_supported_build_profiles developer headless-fast2d)
+if(NOT GREENFIELD_BUILD_PROFILE IN_LIST _greenfield_supported_build_profiles)
+    message(FATAL_ERROR "Invalid GREENFIELD_BUILD_PROFILE '${GREENFIELD_BUILD_PROFILE}'. Supported values are: developer, headless-fast2d.")
+endif()
+
+set(GREENFIELD_BUILD_DEVELOPER_PROFILE OFF)
+if(GREENFIELD_BUILD_PROFILE STREQUAL "developer")
+    set(GREENFIELD_BUILD_DEVELOPER_PROFILE ON)
+endif()
+
 project(Greenfield VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
@@ -18,17 +31,19 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-if(GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
-    set(GREENFIELD_SDL3_TARGET PkgConfig::SDL3)
-else()
-    find_package(SDL3 CONFIG REQUIRED)
-    set(GREENFIELD_SDL3_TARGET SDL3::SDL3)
-endif()
+if(GREENFIELD_BUILD_DEVELOPER_PROFILE)
+    if(GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+        set(GREENFIELD_SDL3_TARGET PkgConfig::SDL3)
+    else()
+        find_package(SDL3 CONFIG REQUIRED)
+        set(GREENFIELD_SDL3_TARGET SDL3::SDL3)
+    endif()
 
-find_package(Dawn CONFIG REQUIRED)
-find_package(Freetype REQUIRED)
+    find_package(Dawn CONFIG REQUIRED)
+    find_package(Freetype REQUIRED)
+endif()
 
 add_library(greenfield_core INTERFACE)
 target_include_directories(greenfield_core INTERFACE "${PROJECT_SOURCE_DIR}")
@@ -56,33 +71,35 @@ add_library(greenfield_platform INTERFACE)
 target_include_directories(greenfield_platform INTERFACE "${PROJECT_SOURCE_DIR}")
 target_link_libraries(greenfield_platform INTERFACE greenfield_core)
 
-add_library(greenfield_sdl_platform
-    engine/platform/SdlRasterPresenter.cpp
-    engine/platform/SdlStartupPresenter.cpp
-    engine/platform/SdlWindow.cpp
-)
-target_include_directories(greenfield_sdl_platform PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_sdl_platform PUBLIC greenfield_platform "${GREENFIELD_SDL3_TARGET}")
-greenfield_enable_warnings(greenfield_sdl_platform)
+if(GREENFIELD_BUILD_DEVELOPER_PROFILE)
+    add_library(greenfield_sdl_platform
+        engine/platform/SdlRasterPresenter.cpp
+        engine/platform/SdlStartupPresenter.cpp
+        engine/platform/SdlWindow.cpp
+    )
+    target_include_directories(greenfield_sdl_platform PUBLIC "${PROJECT_SOURCE_DIR}")
+    target_link_libraries(greenfield_sdl_platform PUBLIC greenfield_platform "${GREENFIELD_SDL3_TARGET}")
+    greenfield_enable_warnings(greenfield_sdl_platform)
 
-add_library(greenfield_render_webgpu
-    engine/render/webgpu/WebGpuContext.cpp
-    engine/render/webgpu/WebGpuRenderer.cpp
-)
-add_library(greenfield_webgpu ALIAS greenfield_render_webgpu)
-target_include_directories(greenfield_render_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
-# The implemented WebGPU renderer currently owns Dawn/WebGPU and backend-local
-# FreeType text rendering; greenfield_ui and greenfield_render stay renderer-agnostic.
-target_link_libraries(greenfield_render_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
-greenfield_enable_warnings(greenfield_render_webgpu)
+    add_library(greenfield_render_webgpu
+        engine/render/webgpu/WebGpuContext.cpp
+        engine/render/webgpu/WebGpuRenderer.cpp
+    )
+    add_library(greenfield_webgpu ALIAS greenfield_render_webgpu)
+    target_include_directories(greenfield_render_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
+    # The implemented WebGPU renderer currently owns Dawn/WebGPU and backend-local
+    # FreeType text rendering; greenfield_ui and greenfield_render stay renderer-agnostic.
+    target_link_libraries(greenfield_render_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
+    greenfield_enable_warnings(greenfield_render_webgpu)
 
-add_executable(greenfield_sandbox
-    apps/sandbox/main.cpp
-)
-target_include_directories(greenfield_sandbox PRIVATE "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform
-                                                  greenfield_render_fast2d greenfield_render_webgpu)
-greenfield_enable_warnings(greenfield_sandbox)
+    add_executable(greenfield_sandbox
+        apps/sandbox/main.cpp
+    )
+    target_include_directories(greenfield_sandbox PRIVATE "${PROJECT_SOURCE_DIR}")
+    target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform
+                                                      greenfield_render_fast2d greenfield_render_webgpu)
+    greenfield_enable_warnings(greenfield_sandbox)
+endif()
 
 if(BUILD_TESTING)
     add_test(
@@ -99,6 +116,7 @@ if(BUILD_TESTING)
                 "-DGREENFIELD_BINARY_DIR=${PROJECT_BINARY_DIR}"
                 "-DGREENFIELD_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
                 "-DGREENFIELD_ALLOW_SYSTEM_DEPENDENCIES=${GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES}"
+                "-DGREENFIELD_BUILD_PROFILE=${GREENFIELD_BUILD_PROFILE}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/CheckCppCmakeAppTemplate.cmake"
     )
 
@@ -109,6 +127,7 @@ if(BUILD_TESTING)
                 "-DGREENFIELD_BINARY_DIR=${PROJECT_BINARY_DIR}"
                 "-DGREENFIELD_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
                 "-DGREENFIELD_ALLOW_SYSTEM_DEPENDENCIES=${GREENFIELD_ALLOW_SYSTEM_DEPENDENCIES}"
+                "-DGREENFIELD_BUILD_PROFILE=${GREENFIELD_BUILD_PROFILE}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/CheckSourceTreeFast2DConsumer.cmake"
     )
 
@@ -137,11 +156,13 @@ if(BUILD_TESTING)
     greenfield_enable_warnings(greenfield_fast2d_renderer_tests)
     add_test(NAME greenfield_fast2d_renderer_tests COMMAND greenfield_fast2d_renderer_tests)
 
-    add_executable(greenfield_sdl_raster_presenter_tests
-        tests/sdl_raster_presenter_tests.cpp
-    )
-    target_include_directories(greenfield_sdl_raster_presenter_tests PRIVATE "${PROJECT_SOURCE_DIR}")
-    target_link_libraries(greenfield_sdl_raster_presenter_tests PRIVATE greenfield_core greenfield_sdl_platform)
-    greenfield_enable_warnings(greenfield_sdl_raster_presenter_tests)
-    add_test(NAME greenfield_sdl_raster_presenter_tests COMMAND greenfield_sdl_raster_presenter_tests)
+    if(TARGET greenfield_sdl_platform)
+        add_executable(greenfield_sdl_raster_presenter_tests
+            tests/sdl_raster_presenter_tests.cpp
+        )
+        target_include_directories(greenfield_sdl_raster_presenter_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+        target_link_libraries(greenfield_sdl_raster_presenter_tests PRIVATE greenfield_core greenfield_sdl_platform)
+        greenfield_enable_warnings(greenfield_sdl_raster_presenter_tests)
+        add_test(NAME greenfield_sdl_raster_presenter_tests COMMAND greenfield_sdl_raster_presenter_tests)
+    endif()
 endif()

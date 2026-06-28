@@ -6,6 +6,10 @@ if(NOT DEFINED GREENFIELD_BINARY_DIR)
     message(FATAL_ERROR "GREENFIELD_BINARY_DIR is required.")
 endif()
 
+if(NOT DEFINED GREENFIELD_BUILD_PROFILE)
+    set(GREENFIELD_BUILD_PROFILE developer)
+endif()
+
 set(_template_dir "${GREENFIELD_SOURCE_DIR}/templates/cpp-cmake-app")
 set(_required_files
     "${_template_dir}/README.md"
@@ -114,14 +118,15 @@ set(_template_configure_command
     -S "${_template_dir}"
     -B "${_template_check_build_dir}"
     "-DGREENFIELD_SOURCE_DIR=${GREENFIELD_SOURCE_DIR}"
+    "-DGREENFIELD_BUILD_PROFILE=${GREENFIELD_BUILD_PROFILE}"
     "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${_template_check_build_dir}/bin"
 )
 
-if(DEFINED GREENFIELD_CMAKE_TOOLCHAIN_FILE AND NOT "${GREENFIELD_CMAKE_TOOLCHAIN_FILE}" STREQUAL "")
+if(GREENFIELD_BUILD_PROFILE STREQUAL "developer" AND DEFINED GREENFIELD_CMAKE_TOOLCHAIN_FILE AND NOT "${GREENFIELD_CMAKE_TOOLCHAIN_FILE}" STREQUAL "")
     list(APPEND _template_configure_command "-DCMAKE_TOOLCHAIN_FILE=${GREENFIELD_CMAKE_TOOLCHAIN_FILE}")
 endif()
 
-if(EXISTS "${GREENFIELD_SOURCE_DIR}/vcpkg.json")
+if(GREENFIELD_BUILD_PROFILE STREQUAL "developer" AND EXISTS "${GREENFIELD_SOURCE_DIR}/vcpkg.json")
     list(APPEND _template_configure_command "-DVCPKG_MANIFEST_DIR=${GREENFIELD_SOURCE_DIR}")
 endif()
 

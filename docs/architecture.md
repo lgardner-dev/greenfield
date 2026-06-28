@@ -29,7 +29,7 @@ The current repository has vocabulary for export and target planning plus a supp
 
 Reusable SDK, UI, runtime, surface, and export vocabulary must not directly depend on SDL, Dawn/WebGPU, or FreeType. Concrete composition roots may wire platform and renderer backend targets together when they produce an app target.
 
-## M7B Source-Tree Consumer Contract
+## M7 Source-Tree Consumer Contract
 
 The supported consumer model is source-tree integration. A consumer CMake project receives `GREENFIELD_SOURCE_DIR`, validates that it points at a Greenfield checkout, and calls:
 
@@ -39,16 +39,32 @@ add_subdirectory("${GREENFIELD_SOURCE_DIR}" greenfield-build EXCLUDE_FROM_ALL)
 
 The consumer then links supported Greenfield targets directly. `templates/cpp-cmake-app` and `consumers/source-tree-fast2d` are validated this way from separate build trees.
 
-The current default dependency path also requires the Greenfield toolchain and manifest when configuring a separate consumer:
+The top-level source-tree build has one cache-string profile selector:
+
+- `GREENFIELD_BUILD_PROFILE=developer` is the default. It preserves the dependency-complete developer flow, including SDL3, Dawn/WebGPU, FreeType, the SDL platform target, WebGPU backend target, compatibility alias, sandbox target, visible Fast2D sandbox path, and full compatible test suite.
+- `GREENFIELD_BUILD_PROFILE=headless-fast2d` is the dependency-light core/UI/Fast2D validation profile. It builds `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_render_fast2d`, and dependency-free `greenfield_platform`; skips SDL3, Dawn/WebGPU, FreeType discovery; excludes `greenfield_sdl_platform`, the SDL raster presenter implementation, `greenfield_render_webgpu`, `greenfield_webgpu`, and `greenfield_sandbox`; and does not require the Greenfield vcpkg toolchain or root manifest.
+
+Invalid profile values fail during configure.
+
+The default `developer` dependency path also requires the Greenfield toolchain and manifest when configuring a separate consumer:
 
 ```bash
 cmake -S <consumer-source> -B <consumer-build> \
     -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
     -DCMAKE_TOOLCHAIN_FILE=/path/to/greenfield/cmake/vcpkg-toolchain.cmake \
-    -DVCPKG_MANIFEST_DIR=/path/to/greenfield
+    -DVCPKG_MANIFEST_DIR=/path/to/greenfield \
+    -DGREENFIELD_BUILD_PROFILE=developer
 ```
 
-The current top-level project still requires SDL3, Dawn/WebGPU, and FreeType during configure because those dependencies are part of the current target topology. M7B does not make those dependencies optional and does not add install/export packaging.
+The headless Fast2D profile configures source-tree Fast2D consumers without that toolchain or manifest:
+
+```bash
+cmake -S <consumer-source> -B <consumer-build> \
+    -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
+    -DGREENFIELD_BUILD_PROFILE=headless-fast2d
+```
+
+M7E does not add install/export packaging.
 
 Consumer-facing SDK/runtime targets today are:
 
@@ -129,7 +145,8 @@ The renderer direction is split between current implementation and future baseli
 - `greenfield_webgpu` remains a compatibility alias for `greenfield_render_webgpu`.
 - The current Dawn/WebGPU backend is an implemented accelerated backend.
 - WebGPU remains the default interactive sandbox renderer.
-- The current default build requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer by default.
+- The default `developer` build requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer by default.
+- The `headless-fast2d` build profile avoids SDL, Dawn/WebGPU, and FreeType by excluding the concrete SDL/WebGPU/sandbox targets and keeping only the core/UI/Fast2D path.
 - Greenfield should not be described as WebGPU-first.
 - `greenfield_render_fast2d` is an implemented sibling backend foundation, and the sandbox path is currently opt-in visibly interactive through SDL CPU raster presentation.
 - Fast2D now rasterizes deterministic filled rectangles with source-over alpha blending, hard-edged rectangular borders, hard-edged rounded fills, hard-edged rounded borders, and intersected nested clips. Its visible path has stronger Control Room shape parity than the original plain-rectangle foundation, but it still defers text and does not claim full WebGPU visual parity.
@@ -278,7 +295,7 @@ Application code may know about concrete implementations because it is the compo
 
 ## Current CMake Target Shape
 
-The top-level build currently defines these targets:
+The `developer` profile currently defines these targets:
 
 - `greenfield_core`: interface target for core value types.
 - `greenfield_render`: interface target for renderer-neutral command and renderer interfaces.
@@ -294,7 +311,9 @@ The sandbox app target links `greenfield_core`, `greenfield_render`, `greenfield
 
 The SDK/runtime consumer-facing targets are `greenfield_core`, `greenfield_render`, `greenfield_ui`, and `greenfield_platform`. Concrete composition-root dependency targets are `greenfield_render_fast2d`, `greenfield_render_webgpu`, `greenfield_webgpu`, and `greenfield_sdl_platform`. `greenfield_sandbox` is demo/internal-only.
 
-Tests currently cover core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, dependency boundaries, and source-tree consumer validation. The dependency boundary test guards reusable SDK-facing files from direct SDL, Dawn/WebGPU, and FreeType includes.
+The `headless-fast2d` profile defines only `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_render_fast2d`, and dependency-free `greenfield_platform`.
+
+Tests in the `developer` profile cover core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, SDL raster presentation helpers, dependency boundaries, and source-tree consumer validation. The `headless-fast2d` profile registers the compatible subset: core, render command, renderer backend kind, layout, UI, Fast2D renderer behavior, dependency boundaries, and source-tree consumer/template validation. The dependency boundary test guards reusable SDK-facing files from direct SDL, Dawn/WebGPU, and FreeType includes.
 
 Tests also include narrow source-tree guardrails for `templates/cpp-cmake-app` and `consumers/source-tree-fast2d`. They check truthful contract language, absence of sandbox/package coupling, absence of forbidden concrete includes in consumer/template sources, and configure/build/run both projects from separate build trees. They do not implement install/export packaging.
 

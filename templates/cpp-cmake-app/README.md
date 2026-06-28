@@ -24,15 +24,26 @@ Configure this template by passing the Greenfield source checkout explicitly:
 cmake -S templates/cpp-cmake-app -B build/template-cpp-cmake-app \
     -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
     -DCMAKE_TOOLCHAIN_FILE=/path/to/greenfield/cmake/vcpkg-toolchain.cmake \
-    -DVCPKG_MANIFEST_DIR=/path/to/greenfield
+    -DVCPKG_MANIFEST_DIR=/path/to/greenfield \
+    -DGREENFIELD_BUILD_PROFILE=developer
 cmake --build build/template-cpp-cmake-app --target greenfield_template_app
 ./build/template-cpp-cmake-app/bin/greenfield_template_app
 ```
 
-The current top-level Greenfield project still requires Dawn/WebGPU and FreeType during configure because those dependencies are part of the current source-tree target topology. This template does not make those dependencies optional and does not use WebGPU at runtime.
+For dependency-light Fast2D validation, configure with the headless profile and without the Greenfield vcpkg toolchain or manifest:
+
+```bash
+cmake -S templates/cpp-cmake-app -B build/template-cpp-cmake-app-headless \
+    -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
+    -DGREENFIELD_BUILD_PROFILE=headless-fast2d
+cmake --build build/template-cpp-cmake-app-headless --target greenfield_template_app
+./build/template-cpp-cmake-app-headless/bin/greenfield_template_app
+```
+
+`developer` is the default dependency-complete profile and keeps SDL3, Dawn/WebGPU, FreeType, the sandbox, and vcpkg-backed developer flow available. `headless-fast2d` is the dependency-light profile for this template's core/UI/Fast2D path.
 
 ## Current Limits
 
-M7B does not implement install rules, package exports, `find_package(Greenfield)`, package config files, a public bootstrap API, CLI tooling, project generation, Windows packaging, browser-hosted WebAssembly support, or optional Dawn/WebGPU/FreeType behavior.
+M7E does not implement install rules, package exports, `find_package(Greenfield)`, package config files, a public bootstrap API, CLI tooling, project generation, Windows packaging, browser-hosted WebAssembly support, or package-consumer dependency discovery.
 
 This template is a source-tree consumer example. Future install/export packaging may replace or supplement this contract, but it does not exist yet.

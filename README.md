@@ -24,8 +24,9 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - M6I text entry foundation: platform-neutral committed text and Backspace input, immediate-mode single-line TextInput, private `UiId`-keyed persistent text state, click-to-focus, focused append-only committed text, and focused Backspace-at-end behavior
 - Minimal SDK surface identity, root UI surface participation, and point-to-surface input routing
 - CMake with Ninja presets
-- vcpkg manifest-mode as the default dependency path
-- M7B source-tree consumer contract documentation, a working C++/CMake app template, and CTest validation for separate source-tree consumers, without install rules, packages, CLI behavior, or WASM implementation
+- vcpkg manifest-mode as the default dependency path for the `developer` build profile
+- M7E two-profile build contract: `developer` for the full dependency-complete sandbox path and `headless-fast2d` for dependency-light core/UI/Fast2D source-tree validation
+- Source-tree consumer contract documentation, a working C++/CMake app template, and CTest validation for separate source-tree consumers, without install rules, packages, CLI behavior, or WASM implementation
 
 ## Direction
 
@@ -38,7 +39,8 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - Renderer choice belongs in app/composition-root policy or narrow renderer-selection vocabulary, not in UI widgets, render commands, surface types, or platform abstractions.
 - `greenfield_render_webgpu` is the current real WebGPU backend target, and `greenfield_webgpu` remains a compatibility alias.
 - Dawn/WebGPU is the current implemented accelerated backend and should remain backend-specific in the architecture direction.
-- The current default build still requires Dawn/WebGPU and FreeType because the sandbox still uses the WebGPU renderer.
+- The default `developer` build still requires SDL3, Dawn/WebGPU, and FreeType because the sandbox uses SDL and keeps WebGPU as the default interactive renderer.
+- The `headless-fast2d` build profile avoids SDL3, Dawn/WebGPU, FreeType, the sandbox, and the vcpkg toolchain/manifest path for dependency-light core/UI/Fast2D validation.
 - Skia may be considered later as an optional renderer/backend, but it is not the initial foundation.
 - Greenfield Studio is a future IDE/editor built on top of the SDK, not part of current M4/M5 foundation work.
 - Greenfield CLI is future tooling, not part of current M4/M5 foundation work.
@@ -55,11 +57,18 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 
 The current renderer-selection and Fast2D presentation work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Fast2D text rasterization, rich text shaping, shared text/font architecture, antialiasing, vector paths, transforms, gradients, visual regression CI, full WebGPU visual parity, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
 
-M7B consumer-contract work currently includes source-tree integration vocabulary, one minimal working C++/CMake app template, and an external-style Fast2D consumer validation. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
+M7 consumer-contract work currently includes source-tree integration vocabulary, one minimal working C++/CMake app template, an external-style Fast2D consumer validation, and the M7E two-profile build contract. It does not add generated projects, CLI commands, install rules, package/export rules, Windows-specific workflows, or browser-hosted WebAssembly support.
 
 M6F/M6G/M6H/M6I UI control work currently includes Button, Checkbox, Toggle/Switch, Slider, and a narrow single-line TextInput. Checkbox and Toggle/Switch preserve `UiId`-keyed persistent boolean state. Slider adds private `UiId`-keyed numeric state, returns `true` only when the current frame changes the value, emits renderer-neutral track/fill/thumb/label commands, supports click-to-set and drag-while-captured behavior, clamps values, and safely handles reversed or degenerate ranges. TextInput adds private `UiId`-keyed persistent text state, click-to-focus, focused append-only committed text, focused Backspace-at-end behavior, and returns `true` only when the final persisted text changes during the current frame. Existing immediate-mode controls participate in platform-neutral keyboard focus traversal: Tab and Shift+Tab move through the current frame's Button, Checkbox, Toggle/Switch, Slider, and TextInput encounter order. Keyboard focus is visible through configurable `FocusStyle` data on Button, Checkbox, Toggle/Switch, Slider, and TextInput styles rather than hardcoded renderer or platform rules. Focused controls emit renderer-neutral outer-ring rectangle commands around the button bounds, checkbox box bounds, toggle track bounds, slider track bounds, or text-input bounds. Focused Slider also responds to platform-neutral Left/Right arrow edge fields: Left decreases value, Right increases value, the step is a narrow internal increment based on the effective normalized range, values clamp to normalized min/max bounds, reversed ranges remain safe through normalization, degenerate ranges remain safe without false changes, and Slider returns `true` only when the value actually changes during the frame. TextInput does not add generic Enter/Space activation, cursor movement, arbitrary insertion, selection, clipboard, IME, multiline editing, validation, undo/redo, or grapheme-aware deletion. A small sandbox Slider example and one small TextInput example exist for manual visual verification. Screenshot capture has been proven as a local development workflow artifact, but screenshots are not committed project artifacts or required automated test outputs. WebGPU currently renders text through its backend-local FreeType path, while Fast2D still defers text and therefore does not yet display TextInput text in the visible Fast2D path. M6F/M6G/M6H/M6I do not add key repeat policy, a full shortcut/keybinding system, an input action system, character input editing beyond focused committed text append and Backspace-at-end, IME, clipboard, selection, accessibility, modal focus traps, retained UI trees, a full event dispatch system, spatial navigation, gamepad navigation, dropdowns, tabs, modals, toasts, tooltips, a compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
 
 ## Current Build Shape
+
+The top-level CMake build has one cache-string profile selector:
+
+- `GREENFIELD_BUILD_PROFILE=developer` is the default. It preserves the existing dependency-complete developer behavior, discovers SDL3, Dawn/WebGPU, and FreeType, builds the SDL platform, WebGPU backend, sandbox, Fast2D backend, SDK/runtime targets, and full compatible test suite.
+- `GREENFIELD_BUILD_PROFILE=headless-fast2d` builds only the dependency-light source-tree/core/UI/Fast2D path. It does not discover SDL3, Dawn/WebGPU, or FreeType; does not require the Greenfield vcpkg toolchain or root manifest; and excludes the SDL platform, SDL raster presenter implementation, WebGPU backend, WebGPU alias, and sandbox.
+
+Invalid profile values fail during configure instead of falling back silently.
 
 The current CMake project defines reusable SDK/runtime-style targets, concrete backend/platform targets, and one sandbox executable:
 
@@ -73,7 +82,7 @@ The current CMake project defines reusable SDK/runtime-style targets, concrete b
 - `greenfield_webgpu`: compatibility alias for `greenfield_render_webgpu`.
 - `greenfield_sandbox`: demo executable in `apps/sandbox`.
 
-`greenfield_sandbox` links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu`. It is a demo composition root, so it may know about concrete SDL, WebGPU, and Fast2D targets while the reusable SDK layers remain independent of those concrete providers.
+`greenfield_sandbox` links `greenfield_core`, `greenfield_render`, `greenfield_ui`, `greenfield_sdl_platform`, `greenfield_render_fast2d`, and `greenfield_render_webgpu` in the `developer` profile. It is a demo composition root, so it may know about concrete SDL, WebGPU, and Fast2D targets while the reusable SDK layers remain independent of those concrete providers.
 
 Supported SDK/runtime consumer-facing targets today are `greenfield_core`, `greenfield_render`, `greenfield_ui`, and `greenfield_platform`. Concrete composition-root dependency targets are `greenfield_render_fast2d`, `greenfield_render_webgpu`, `greenfield_webgpu`, and `greenfield_sdl_platform`. `greenfield_sandbox` is demo/internal-only and is not a supported consumer dependency.
 
@@ -87,16 +96,25 @@ CTest includes narrow source-tree consumer guardrails that configure, build, and
 
 The supported consumer model is source-tree integration. A consumer project receives `GREENFIELD_SOURCE_DIR`, validates it, calls `add_subdirectory("${GREENFIELD_SOURCE_DIR}" greenfield-build EXCLUDE_FROM_ALL)`, and links supported Greenfield targets.
 
-When using the default dependency path, configure consumers with the Greenfield toolchain and manifest:
+When using the default `developer` dependency path, configure consumers with the Greenfield toolchain and manifest:
 
 ```bash
 cmake -S templates/cpp-cmake-app -B build/template-cpp-cmake-app \
     -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
     -DCMAKE_TOOLCHAIN_FILE=/path/to/greenfield/cmake/vcpkg-toolchain.cmake \
-    -DVCPKG_MANIFEST_DIR=/path/to/greenfield
+    -DVCPKG_MANIFEST_DIR=/path/to/greenfield \
+    -DGREENFIELD_BUILD_PROFILE=developer
 ```
 
-The current top-level target topology still requires SDL3, Dawn/WebGPU, and FreeType during configure. M7B does not implement optional dependency behavior, install/export packaging, or `find_package(Greenfield)`. See `docs/consumer-contract.md` for the full contract.
+For dependency-light Fast2D consumers, configure source-tree consumers with the headless profile and without the Greenfield vcpkg toolchain or manifest:
+
+```bash
+cmake -S templates/cpp-cmake-app -B build/template-cpp-cmake-app-headless \
+    -DGREENFIELD_SOURCE_DIR=/path/to/greenfield \
+    -DGREENFIELD_BUILD_PROFILE=headless-fast2d
+```
+
+M7E does not implement install/export packaging or `find_package(Greenfield)`. See `docs/consumer-contract.md` for the full contract.
 
 ## Export Vocabulary
 
@@ -124,6 +142,14 @@ Direct CMake usage is also supported:
 cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev --output-on-failure
+```
+
+The dependency-light profile can be run without vcpkg:
+
+```bash
+cmake --preset headless-fast2d
+cmake --build --preset headless-fast2d
+ctest --preset headless-fast2d --output-on-failure
 ```
 
 ## Run
