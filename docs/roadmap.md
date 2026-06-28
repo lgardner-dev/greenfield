@@ -120,6 +120,20 @@ Existing Button, Checkbox, Toggle/Switch, and Slider mouse behavior, focus trave
 
 M6H does not add key repeat policy, a full shortcut/keybinding system, an input action system, text input, character input, IME, clipboard, selection, accessibility, screen reader semantics, spatial navigation, gamepad navigation, a retained UI tree, a full event dispatch system, dropdowns, tabs, modals, toasts, tooltips, Greenfield Studio, Greenfield CLI, Canvas2D, Scene3D, Fast2D text rendering, Skia, Python bindings, or hot reload.
 
+## M6I
+
+M6I is the narrow text entry foundation slice for the existing immediate UI runtime.
+
+Current M6I work adds platform-neutral per-frame committed text and Backspace input to `InputState`. SDL translates text-input events and non-repeat Backspace key-down events into that neutral vocabulary, keeping UI code independent from SDL and native text-event details.
+
+`UiContext` now owns private `UiId`-keyed persistent text state alongside its existing boolean, numeric, focus, capture, and scroll state. TextInput is an immediate-mode single-line control that supports click-to-focus, append-only committed text while focused, Backspace-at-end while focused, and `true` return only when the final persisted text changes during the current frame. TextInput keeps normal Tab and Shift+Tab traversal and intentionally does not use generic Enter or Space activation behavior.
+
+TextInput continues to emit existing renderer-neutral rectangle and `DrawText` commands rather than introducing editor-specific render-command vocabulary. WebGPU continues to render text through the current backend-local FreeType path. Fast2D remains opt-in and visibly interactive for field shapes and focus behavior, but still defers text rasterization and therefore does not yet display TextInput text in the visible Fast2D path.
+
+The existing Control Room sandbox includes one small TextInput example for manual verification. In the Codex environment, timeout launch checks were attempted for both `--renderer=webgpu` and `--renderer=fast2d`, and both reached the running sandbox before timing out with exit code `124` as expected. This confirmed launch viability in that environment, but it did not provide interactive keyboard-entry verification.
+
+M6I does not add IME composition or text-editing events, clipboard, selection, cursor movement, Delete/Home/End behavior, arbitrary insertion position, grapheme-aware deletion, multiline input, password fields, placeholder behavior, validation, undo/redo, accessibility semantics, a keyboard shortcut/keybinding system, retained UI, full event dispatch, Fast2D text rasterization, a shared text/font service, HarfBuzz or advanced shaping, changes to backend-local FreeType ownership in WebGPU, Canvas2D, Scene3D, Greenfield Studio, Greenfield CLI, export tooling, Skia, Python bindings, or hot reload.
+
 ## M6E
 
 M6E is the Fast2D visual parity foundation slice for the existing one-sandbox renderer-selection workflow.
@@ -178,7 +192,9 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 - App template generation beyond the current illustrative scaffold
 - Install, package, or export rule implementation
 - Windows-specific export workflow implementation
-- Text entry, character input, IME, clipboard, selection, accessibility, and screen reader semantics
+- Full text editor behavior beyond the current narrow TextInput foundation
+- IME composition or text-editing events
+- Clipboard, selection, cursor movement, Delete/Home/End editing behavior, arbitrary insertion position, grapheme-aware deletion, multiline input, password fields, placeholder behavior, validation, undo/redo, accessibility, and screen reader semantics
 - Shortcut/keybinding system, spatial navigation, gamepad navigation, and Slider arrow-key/repeat behavior
 - Retained UI tree or full UI event dispatch system
-- Broad product-quality UI control set beyond the current Checkbox, Toggle/Switch, and Slider foundation
+- Broad product-quality UI control set beyond the current Checkbox, Toggle/Switch, Slider, and narrow TextInput foundation

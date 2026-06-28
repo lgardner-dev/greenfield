@@ -46,7 +46,7 @@ These types are dependency-light and should stay independent from platform, rend
 
 ### `engine/input`
 
-Input contains platform-neutral interaction state and minimal routing helpers. `InputState` currently exposes mouse position, left mouse button transitions, vertical scroll delta, and per-frame keyboard edge fields for Tab, Shift+Tab, Enter, Space, Left, and Right. The interaction routing vocabulary can hit-test an input point against surface bounds and return the target `SurfaceId` when one is found.
+Input contains platform-neutral interaction state and minimal routing helpers. `InputState` currently exposes mouse position, left mouse button transitions, vertical scroll delta, per-frame keyboard edge fields for Tab, Shift+Tab, Enter, Space, Backspace, Left, and Right, and per-frame committed text for narrow text entry. The interaction routing vocabulary can hit-test an input point against surface bounds and return the target `SurfaceId` when one is found.
 
 Input state and routing should describe what happened and which renderer-neutral surface bounds were targeted, not where the input came from. They must not depend on SDL, WebGPU, Dawn, FreeType, or any concrete windowing backend.
 
@@ -64,7 +64,7 @@ Platform contains abstract interfaces for windows and native drawing surfaces:
 The current SDL implementation lives in `engine/platform`:
 
 - `SdlWindow` implements `IWindow` and `INativeSurfaceProvider`.
-- `SdlWindow` owns the SDL window, polls SDL events, translates SDL mouse, scroll, and non-repeat key-down events into platform-neutral `InputState`, and exposes native Wayland or X11 surface information.
+- `SdlWindow` owns the SDL window, polls SDL events, translates SDL mouse, scroll, non-repeat key-down events, and SDL text-input events into platform-neutral `InputState`, and exposes native Wayland or X11 surface information.
 - `SdlStartupPresenter` uses SDL window surfaces to draw an immediate startup frame before WebGPU takes over.
 - `SdlRasterPresenter` uses SDL window surfaces to present CPU raster pixels for the opt-in Fast2D sandbox path.
 
@@ -204,9 +204,20 @@ M6G adds visible focus styling inside the same immediate UI model:
 - Renderers interpret those rectangle commands like any other UI draw command; they do not know focus semantics, traversal rules, or default focus styling policy.
 - App authors can keep the default high-contrast outer ring, override focus-ring appearance per control style, or suppress the ring with `FocusVisualKind::None`.
 
-The sandbox includes one small Slider example in the existing Control Room UI for manual visual verification. A local screenshot capture workflow has been proven useful during development, but screenshots are not committed project artifacts and are not required automated test outputs.
+M6I adds narrow text entry groundwork inside the same immediate UI model:
 
-This foundation is UI runtime plus narrow keyboard/focus groundwork, configurable focus styling, and narrow focused Slider keyboard adjustment, not a retained-mode system or broad controls milestone. It does not add key repeat policy, a full shortcut/keybinding system, an input action system, text entry, character input, IME, clipboard, selection, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, toasts, tooltips, a retained UI tree, full event dispatch system, spatial navigation, gamepad navigation, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, Skia, Python bindings, or hot reload.
+- `InputState` now carries platform-neutral per-frame committed text and a Backspace edge in addition to the existing keyboard/focus vocabulary.
+- SDL-owned platform code translates SDL text-input events and non-repeat Backspace key-down events into that neutral vocabulary. SDL does not know TextInput semantics, caret rules, selection rules, or editor behavior.
+- `UiContext` owns private `UiId`-keyed persistent text state alongside its boolean, numeric, focus, active-control, and scroll state.
+- TextInput is immediate-mode and single-line. It supports click-to-focus, append-only committed text while focused, and Backspace-at-end while focused.
+- TextInput returns `true` only when the final persisted text changes during the current frame.
+- TextInput participates in the existing Tab and Shift+Tab traversal model and does not use generic Enter or Space activation behavior.
+- TextInput emits existing renderer-neutral rectangle and `DrawText` commands only. Render command types do not encode caret placement, selection ranges, IME composition, multiline editing, validation, undo/redo, or broader editor semantics.
+- WebGPU continues to render text through its backend-local FreeType path. Fast2D continues to defer text rasterization, so visible Fast2D presentation shows TextInput field shapes and focus styling without rendering the field's text content.
+
+The sandbox includes one small Slider example and one small TextInput example in the existing Control Room UI for manual visual verification. A local screenshot capture workflow has been proven useful during development, but screenshots are not committed project artifacts and are not required automated test outputs.
+
+This foundation is UI runtime plus narrow keyboard/focus groundwork, configurable focus styling, narrow focused Slider keyboard adjustment, and narrow immediate-mode text entry groundwork, not a retained-mode system or broad controls milestone. It does not add key repeat policy, a full shortcut/keybinding system, an input action system, IME, clipboard, selection, cursor movement, Delete/Home/End editing behavior, arbitrary insertion position, multiline editing, placeholder behavior, validation, undo/redo, grapheme-aware deletion, accessibility, screen reader semantics, modal focus traps, dropdowns, tabs, modals, toasts, tooltips, a retained UI tree, full event dispatch system, spatial navigation, gamepad navigation, compositor, mixed-surface composition, Canvas2D, Scene3D, shader tools, dashboards/editor systems, node graphs, Studio, CLI, project generation/export tooling, visible Fast2D presentation, Fast2D text rasterization, a shared FreeType/text service, HarfBuzz or advanced shaping, Skia, Python bindings, or hot reload.
 
 ### `apps/sandbox`
 
