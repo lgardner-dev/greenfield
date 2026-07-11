@@ -4,6 +4,7 @@
 #include <cmath>
 #include <exception>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -75,12 +76,65 @@ struct SandboxOptions
     SandboxWindowSize windowSize{};
     RendererBackendKind rendererBackendKind{RendererBackendKind::WebGpu};
     bool runHeadlessFast2D{false};
+    bool profileFast2D{false};
     std::string invalidRendererName{};
 };
 
 struct ControlRoomFrameRegions
 {
     Rect visualizationPlotBounds{};
+};
+
+struct Fast2DProfileStageSamples
+{
+    std::vector<double> frameInputSetupMilliseconds;
+    std::vector<double> controlRoomCommandGenerationMilliseconds;
+    std::vector<double> beginFrameMilliseconds;
+    std::vector<double> uiSubmissionMilliseconds;
+    std::vector<double> visualizationSubmissionMilliseconds;
+    std::vector<double> overlaySubmissionMilliseconds;
+    std::vector<double> endFrameMilliseconds;
+    std::vector<double> sdlRasterPresentationMilliseconds;
+    std::vector<double> totalFrameMilliseconds;
+};
+
+struct Fast2DProfileFrameTiming
+{
+    double frameInputSetupMilliseconds{0.0};
+    double controlRoomCommandGenerationMilliseconds{0.0};
+    double beginFrameMilliseconds{0.0};
+    double uiSubmissionMilliseconds{0.0};
+    double visualizationSubmissionMilliseconds{0.0};
+    double overlaySubmissionMilliseconds{0.0};
+    double endFrameMilliseconds{0.0};
+    double sdlRasterPresentationMilliseconds{0.0};
+    double totalFrameMilliseconds{0.0};
+};
+
+struct Fast2DProfileSummary
+{
+    double meanMilliseconds{0.0};
+    double medianMilliseconds{0.0};
+    double percentile95Milliseconds{0.0};
+    double minimumMilliseconds{0.0};
+    double maximumMilliseconds{0.0};
+};
+
+struct Fast2DProfileScenario
+{
+    const char* name;
+    const char* description;
+};
+
+struct Fast2DProfileLastFrameObservations
+{
+    std::size_t renderCommandCount{0};
+    std::size_t visualizationCommandCount{0};
+    std::size_t overlayCommandCount{0};
+    std::size_t preparedFillOperationCount{0};
+    std::size_t deferredTextCommandCount{0};
+    std::size_t rasterPixelCount{0};
+    std::size_t sdlRgbaByteCount{0};
 };
 
 constexpr Color BackgroundColor{0.055f, 0.065f, 0.078f, 1.0f};
@@ -95,6 +149,19 @@ constexpr Color RedAccentColor{0.940f, 0.270f, 0.250f, 1.0f};
 constexpr Color TextPrimaryColor{0.925f, 0.965f, 1.0f, 1.0f};
 constexpr Color TextSecondaryColor{0.640f, 0.730f, 0.830f, 1.0f};
 constexpr Color MutedTextColor{0.440f, 0.520f, 0.620f, 1.0f};
+constexpr int Fast2DProfileWarmupFrameCount = 30;
+constexpr int Fast2DProfileMeasuredFrameCount = 300;
+
+const std::array<Fast2DProfileScenario, 2> Fast2DProfileScenarios{{
+    Fast2DProfileScenario{
+        .name = "idle",
+        .description = "stable mouse position outside interactive controls",
+    },
+    Fast2DProfileScenario{
+        .name = "hover-sweep",
+        .description = "deterministic mouse positions sweep across existing controls without clicks",
+    },
+}};
 
 RectangleStyle MakePanelStyle(Color fillColor = SurfaceColor)
 {
@@ -317,6 +384,12 @@ std::string FindDefaultFontPath()
     return {};
 }
 
+double MillisecondsBetween(std::chrono::steady_clock::time_point start,
+                           std::chrono::steady_clock::time_point end)
+{
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
 std::optional<SandboxWindowSize> ParseWindowSize(std::string_view text)
 {
     const std::size_t separatorPosition = text.find('x');
@@ -348,6 +421,7 @@ SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
     constexpr std::string_view RendererPrefix{"--renderer="};
     constexpr std::string_view HeadlessFlag{"--headless"};
     constexpr std::string_view DiagnosticFlag{"--diagnostic"};
+    constexpr std::string_view ProfileFast2DFlag{"--profile-fast2d"};
     SandboxOptions sandboxOptions{};
 
     for (int argumentIndex = 1; argumentIndex < argumentCount; ++argumentIndex)
@@ -386,9 +460,100 @@ SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
             sandboxOptions.runHeadlessFast2D = true;
             continue;
         }
+
+        if (argument == ProfileFast2DFlag)
+        {
+            sandboxOptions.profileFast2D = true;
+            continue;
+        }
     }
 
     return sandboxOptions;
+}
+
+Fast2DProfileSummary SummarizeSamples(std::vector<double> samples)
+{
+    if (samples.empty())
+    {
+        return {};
+    }
+
+    std::sort(samples.begin(), samples.end());
+
+    double totalMilliseconds = 0.0;
+    for (double sample : samples)
+    {
+        totalMilliseconds += sample;
+    }
+
+    const auto percentile = [&samples](double percentileValue) {
+        // Nearest-rank percentile over a sorted sample set. This is deterministic
+        // and avoids interpolating timing samples that were never observed.
+        const double rank = std::ceil((percentileValue / 100.0) * static_cast<double>(samples.size()));
+        const std::size_t index = static_cast<std::size_t>(std::clamp(rank, 1.0, static_cast<double>(samples.size()))) - 1U;
+        return samples[index];
+    };
+
+    return Fast2DProfileSummary{
+        .meanMilliseconds = totalMilliseconds / static_cast<double>(samples.size()),
+        .medianMilliseconds = percentile(50.0),
+        .percentile95Milliseconds = percentile(95.0),
+        .minimumMilliseconds = samples.front(),
+        .maximumMilliseconds = samples.back(),
+    };
+}
+
+void AddFrameTimingSample(Fast2DProfileStageSamples& samples, const Fast2DProfileFrameTiming& frameTiming)
+{
+    samples.frameInputSetupMilliseconds.push_back(frameTiming.frameInputSetupMilliseconds);
+    samples.controlRoomCommandGenerationMilliseconds.push_back(frameTiming.controlRoomCommandGenerationMilliseconds);
+    samples.beginFrameMilliseconds.push_back(frameTiming.beginFrameMilliseconds);
+    samples.uiSubmissionMilliseconds.push_back(frameTiming.uiSubmissionMilliseconds);
+    samples.visualizationSubmissionMilliseconds.push_back(frameTiming.visualizationSubmissionMilliseconds);
+    samples.overlaySubmissionMilliseconds.push_back(frameTiming.overlaySubmissionMilliseconds);
+    samples.endFrameMilliseconds.push_back(frameTiming.endFrameMilliseconds);
+    samples.sdlRasterPresentationMilliseconds.push_back(frameTiming.sdlRasterPresentationMilliseconds);
+    samples.totalFrameMilliseconds.push_back(frameTiming.totalFrameMilliseconds);
+}
+
+void PrintStageSummary(const char* label, const std::vector<double>& samples)
+{
+    const Fast2DProfileSummary summary = SummarizeSamples(samples);
+    std::cout << "  " << std::left << std::setw(39) << label << std::right << " mean "
+              << std::setw(8) << summary.meanMilliseconds << " ms, median " << std::setw(8)
+              << summary.medianMilliseconds << " ms, p95 " << std::setw(8)
+              << summary.percentile95Milliseconds << " ms, min " << std::setw(8)
+              << summary.minimumMilliseconds << " ms, max " << std::setw(8)
+              << summary.maximumMilliseconds << " ms\n";
+}
+
+void PrintFast2DProfileSummary(const Fast2DProfileScenario& scenario,
+                               const SandboxWindowSize& windowSize,
+                               const Fast2DProfileStageSamples& samples,
+                               const Fast2DProfileLastFrameObservations& observations)
+{
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "Fast2D profile summary: scenario=" << scenario.name << ", window="
+              << windowSize.width << "x" << windowSize.height << '\n';
+    std::cout << "  Workload: " << scenario.description << ". Warmup frames "
+              << Fast2DProfileWarmupFrameCount << ", measured frames "
+              << Fast2DProfileMeasuredFrameCount << ". Normal 16 ms sandbox pacing is disabled in profiling mode.\n";
+    PrintStageSummary("frame/input setup", samples.frameInputSetupMilliseconds);
+    PrintStageSummary("Control Room command generation", samples.controlRoomCommandGenerationMilliseconds);
+    PrintStageSummary("Fast2D BeginFrame", samples.beginFrameMilliseconds);
+    PrintStageSummary("UI Submit/preparation", samples.uiSubmissionMilliseconds);
+    PrintStageSummary("visualization Submit/preparation", samples.visualizationSubmissionMilliseconds);
+    PrintStageSummary("overlay UI Submit/preparation", samples.overlaySubmissionMilliseconds);
+    PrintStageSummary("Fast2D EndFrame/rasterization", samples.endFrameMilliseconds);
+    PrintStageSummary("SDL raster presentation", samples.sdlRasterPresentationMilliseconds);
+    PrintStageSummary("total measured frame", samples.totalFrameMilliseconds);
+    std::cout << "  Last measured frame: " << observations.renderCommandCount << " UI commands, "
+              << observations.visualizationCommandCount << " visualization commands, "
+              << observations.overlayCommandCount << " overlay commands, "
+              << observations.preparedFillOperationCount << " prepared fill operations, "
+              << observations.deferredTextCommandCount << " deferred text commands, "
+              << observations.rasterPixelCount << " Fast2D raster pixels, "
+              << observations.sdlRgbaByteCount << " SDL RGBA bytes per presentation.\n";
 }
 
 void DrawHeader(UiContext& uiContext, const Rect& bounds)
@@ -729,6 +894,72 @@ ControlRoomFrameRegions BuildControlRoomFrame(UiContext& uiContext, const Layout
     return BuildControlRoomUi(uiContext, layout.bounds, dashboardState);
 }
 
+InputState MakeFast2DProfileIdleInput()
+{
+    return InputState{
+        .mousePosition = Vec2{4.0f, 4.0f},
+    };
+}
+
+std::array<Vec2, 8> MakeFast2DProfileHoverSweepPoints(const SandboxWindowSize& windowSize)
+{
+    const float width = static_cast<float>(windowSize.width);
+    const float height = static_cast<float>(windowSize.height);
+    const Rect rootBounds = MakeRectangle(0.0f, 0.0f, width, height);
+    const float margin = ClampLayoutValue(PercentageWidth(rootBounds, 0.01875f), 24.0f, 36.0f);
+    const float gap = ClampLayoutValue(PercentageWidth(rootBounds, 0.014f), 18.0f, 24.0f);
+    const float headerHeight = ClampLayoutValue(PercentageHeight(rootBounds, 0.122f), 88.0f, 112.0f);
+    const float navigationWidth = ClampLayoutValue(PercentageWidth(rootBounds, 0.14f), 178.0f, 220.0f);
+
+    const Rect dashboardBounds = InsetRectangle(rootBounds, margin);
+    const LayoutSplit headerAndContent = SplitRectangleVerticallyFixedFlexible(dashboardBounds, headerHeight, gap);
+    const LayoutSplit navigationAndMain =
+        SplitRectangleHorizontallyFixedFlexible(headerAndContent.second, navigationWidth, gap);
+    const float rightColumnWidth = ClampLayoutValue(PercentageWidth(navigationAndMain.second, 0.30f), 330.0f, 420.0f);
+    const LayoutSplit centerAndRight =
+        SplitRectangleHorizontallyFixedFlexible(navigationAndMain.second, rightColumnWidth, gap, FixedRegion::Second);
+    const LayoutSplit alertsAndActions = SplitRectangleVerticallyByPercentage(centerAndRight.second, 0.58f, gap);
+
+    const Rect navigationBounds = navigationAndMain.first;
+    const Rect actionsBounds = alertsAndActions.second;
+    const Rect assetsBounds =
+        MakeRectangle(centerAndRight.first.position.x,
+                      centerAndRight.first.position.y + std::max(196.0f, centerAndRight.first.size.y * 0.68f) + gap,
+                      centerAndRight.first.size.x,
+                      std::max(80.0f, centerAndRight.first.size.y * 0.28f));
+
+    return std::array<Vec2, 8>{{
+        Vec2{4.0f, 4.0f},
+        Vec2{navigationBounds.position.x + 30.0f, navigationBounds.position.y + 110.0f},
+        Vec2{navigationBounds.position.x + 48.0f, navigationBounds.position.y + 154.0f},
+        Vec2{navigationBounds.position.x + 40.0f, navigationBounds.position.y + 216.0f},
+        Vec2{navigationBounds.position.x + 40.0f, navigationBounds.position.y + 274.0f},
+        Vec2{actionsBounds.position.x + 36.0f, actionsBounds.position.y + 82.0f},
+        Vec2{actionsBounds.position.x + 44.0f, actionsBounds.position.y + actionsBounds.size.y - 28.0f},
+        Vec2{assetsBounds.position.x + 48.0f, assetsBounds.position.y + 42.0f},
+    }};
+}
+
+InputState MakeFast2DProfileHoverSweepInput(int frameIndex, const SandboxWindowSize& windowSize)
+{
+    const std::array<Vec2, 8> sweepPoints = MakeFast2DProfileHoverSweepPoints(windowSize);
+    return InputState{
+        .mousePosition = sweepPoints[static_cast<std::size_t>(frameIndex) % sweepPoints.size()],
+    };
+}
+
+InputState MakeFast2DProfileInput(const Fast2DProfileScenario& scenario,
+                                  int frameIndex,
+                                  const SandboxWindowSize& windowSize)
+{
+    if (std::string_view{scenario.name} == "hover-sweep")
+    {
+        return MakeFast2DProfileHoverSweepInput(frameIndex, windowSize);
+    }
+
+    return MakeFast2DProfileIdleInput();
+}
+
 void SubmitControlRoomFrame(Fast2DRenderer& renderer,
                             const RenderCommandList& renderCommands,
                             const ControlRoomFrameRegions& frameRegions)
@@ -781,6 +1012,144 @@ int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
               << " completed visualization commands, " << renderer.PreparedFillOperationCount() << " fill operations, "
               << renderer.DeferredTextCommandCount() << " deferred text commands, raster target "
               << renderer.RasterTargetWidth() << "x" << renderer.RasterTargetHeight() << ".\n";
+
+    return 0;
+}
+
+int RunFast2DProfileScenario(const Fast2DProfileScenario& scenario,
+                             const SandboxWindowSize& initialWindowSize,
+                             SdlWindow& window,
+                             Fast2DRenderer& renderer,
+                             SdlRasterPresenter& presenter)
+{
+    UiContext uiContext;
+    ConfigureControlRoomStyle(uiContext);
+    DashboardState dashboardState{};
+    Fast2DProfileStageSamples samples;
+    Fast2DProfileLastFrameObservations observations;
+
+    const int totalFrameCount = Fast2DProfileWarmupFrameCount + Fast2DProfileMeasuredFrameCount;
+    for (int frameIndex = 0; frameIndex < totalFrameCount; ++frameIndex)
+    {
+        Fast2DProfileFrameTiming frameTiming;
+        const bool isWarmupFrame = frameIndex < Fast2DProfileWarmupFrameCount;
+        const auto totalStart = std::chrono::steady_clock::now();
+
+        auto stageStart = std::chrono::steady_clock::now();
+        window.PollEvents();
+        if (window.ShouldClose())
+        {
+            return 1;
+        }
+
+        if (window.GetWidth() <= 0 || window.GetHeight() <= 0)
+        {
+            std::cerr << "Fast2D profiling requires a drawable window size.\n";
+            return 1;
+        }
+
+        const auto rasterWidth = static_cast<std::size_t>(window.GetWidth());
+        const auto rasterHeight = static_cast<std::size_t>(window.GetHeight());
+        if (renderer.RasterTargetWidth() != rasterWidth || renderer.RasterTargetHeight() != rasterHeight)
+        {
+            renderer.ResizeRasterTarget(rasterWidth, rasterHeight);
+        }
+
+        const InputState profileInput = MakeFast2DProfileInput(scenario, frameIndex, initialWindowSize);
+        auto stageEnd = std::chrono::steady_clock::now();
+        frameTiming.frameInputSetupMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        renderer.BeginFrame();
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.beginFrameMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        const Layout layout =
+            MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
+        const ControlRoomFrameRegions frameRegions =
+            BuildControlRoomFrame(uiContext, layout, dashboardState, profileInput);
+        const auto& renderCommands = uiContext.EndFrame();
+        VisualizationCommandList visualizationCommands =
+            BuildResponseTraceVisualizationCommands(frameRegions.visualizationPlotBounds);
+        RenderCommandList overlayCommands = BuildResponseTraceOverlayCommands(frameRegions.visualizationPlotBounds);
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.controlRoomCommandGenerationMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        renderer.Submit(renderCommands);
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.uiSubmissionMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        renderer.SubmitVisualization(visualizationCommands);
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.visualizationSubmissionMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        renderer.Submit(overlayCommands);
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.overlaySubmissionMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        renderer.EndFrame();
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.endFrameMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+
+        stageStart = std::chrono::steady_clock::now();
+        const bool presented =
+            presenter.PresentRaster(renderer.RasterTargetWidth(), renderer.RasterTargetHeight(), renderer.RasterPixels());
+        stageEnd = std::chrono::steady_clock::now();
+        frameTiming.sdlRasterPresentationMilliseconds = MillisecondsBetween(stageStart, stageEnd);
+        if (!presented)
+        {
+            std::cerr << "Fast2D profiling failed to present a raster frame.\n";
+            return 1;
+        }
+
+        frameTiming.totalFrameMilliseconds = MillisecondsBetween(totalStart, std::chrono::steady_clock::now());
+
+        if (!isWarmupFrame)
+        {
+            AddFrameTimingSample(samples, frameTiming);
+            observations = Fast2DProfileLastFrameObservations{
+                .renderCommandCount = renderCommands.Size(),
+                .visualizationCommandCount = visualizationCommands.Size(),
+                .overlayCommandCount = overlayCommands.Size(),
+                .preparedFillOperationCount = renderer.PreparedFillOperationCount(),
+                .deferredTextCommandCount = renderer.DeferredTextCommandCount(),
+                .rasterPixelCount = renderer.RasterTargetWidth() * renderer.RasterTargetHeight(),
+                .sdlRgbaByteCount = renderer.RasterTargetWidth() * renderer.RasterTargetHeight() *
+                                    SdlRasterPixelByteCount,
+            };
+        }
+    }
+
+    PrintFast2DProfileSummary(scenario, initialWindowSize, samples, observations);
+    return 0;
+}
+
+int RunFast2DProfilingSandbox(const SandboxWindowSize& initialWindowSize)
+{
+    std::cout << "Running Fast2D profiling path.\n";
+    std::cout << "Profiling uses deterministic sandbox-local InputState values and ignores physical mouse motion.\n";
+
+    SdlWindow window{"Greenfield Sandbox - Fast2D Profile",
+                     initialWindowSize.width,
+                     initialWindowSize.height,
+                     SdlWindowVisibility::Hidden};
+    Fast2DRenderer renderer{static_cast<std::size_t>(window.GetWidth()),
+                            static_cast<std::size_t>(window.GetHeight())};
+    SdlRasterPresenter presenter{window};
+
+    for (const Fast2DProfileScenario& scenario : Fast2DProfileScenarios)
+    {
+        const int result = RunFast2DProfileScenario(scenario, initialWindowSize, window, renderer, presenter);
+        if (result != 0)
+        {
+            return result;
+        }
+    }
 
     return 0;
 }
@@ -911,8 +1280,26 @@ int main(int argumentCount, char* argumentValues[])
             return 1;
         }
 
+        if (sandboxOptions.profileFast2D && sandboxOptions.rendererBackendKind != RendererBackendKind::Fast2D)
+        {
+            std::cerr << "--profile-fast2d requires --renderer=fast2d.\n";
+            return 1;
+        }
+
+        if (sandboxOptions.profileFast2D && sandboxOptions.runHeadlessFast2D)
+        {
+            std::cerr << "--profile-fast2d runs the visible Fast2D path and cannot be combined with --headless or "
+                         "--diagnostic.\n";
+            return 1;
+        }
+
         if (sandboxOptions.rendererBackendKind == RendererBackendKind::Fast2D)
         {
+            if (sandboxOptions.profileFast2D)
+            {
+                return RunFast2DProfilingSandbox(sandboxOptions.windowSize);
+            }
+
             if (sandboxOptions.runHeadlessFast2D)
             {
                 return RunFast2DDiagnosticSandbox(sandboxOptions.windowSize);
