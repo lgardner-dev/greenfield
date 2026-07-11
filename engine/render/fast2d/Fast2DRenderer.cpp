@@ -8,6 +8,8 @@ namespace greenfield
 namespace
 {
 
+constexpr float CoverageBoundsEpsilon = 0.0001f;
+
 [[nodiscard]] bool HasPositiveArea(const Rect& rectangle) noexcept
 {
     return rectangle.size.x > 0.0f && rectangle.size.y > 0.0f;
@@ -23,6 +25,14 @@ namespace
     return Rect{
         .position = Vec2{0.0f, 0.0f},
         .size = Vec2{static_cast<float>(width), static_cast<float>(height)},
+    };
+}
+
+[[nodiscard]] Rect MakeRectangleFromEdges(float left, float top, float right, float bottom) noexcept
+{
+    return Rect{
+        .position = Vec2{.x = left, .y = top},
+        .size = Vec2{.x = std::max(0.0f, right - left), .y = std::max(0.0f, bottom - top)},
     };
 }
 
@@ -42,6 +52,54 @@ struct PixelBounds
         .right = static_cast<std::size_t>(std::ceil(rectangle.position.x + rectangle.size.x)),
         .bottom = static_cast<std::size_t>(std::ceil(rectangle.position.y + rectangle.size.y)),
     };
+}
+
+[[nodiscard]] std::size_t ClampPixelBound(float value, std::size_t upperBound) noexcept
+{
+    if (value <= 0.0f)
+    {
+        return 0U;
+    }
+
+    const float floatingUpperBound = static_cast<float>(upperBound);
+    if (value >= floatingUpperBound)
+    {
+        return upperBound;
+    }
+
+    return static_cast<std::size_t>(value);
+}
+
+[[nodiscard]] PixelBounds MakePixelCenterBounds(const Rect& rectangle,
+                                                std::size_t rasterTargetWidth,
+                                                std::size_t rasterTargetHeight) noexcept
+{
+    const float left = std::ceil(rectangle.position.x - 0.5f);
+    const float top = std::ceil(rectangle.position.y - 0.5f);
+    const float right = std::ceil(rectangle.position.x + rectangle.size.x - 0.5f);
+    const float bottom = std::ceil(rectangle.position.y + rectangle.size.y - 0.5f);
+
+    return PixelBounds{
+        .left = ClampPixelBound(left, rasterTargetWidth),
+        .top = ClampPixelBound(top, rasterTargetHeight),
+        .right = ClampPixelBound(right, rasterTargetWidth),
+        .bottom = ClampPixelBound(bottom, rasterTargetHeight),
+    };
+}
+
+[[nodiscard]] PixelBounds MakeVisualizationPixelBounds(const Rect& coverageBounds,
+                                                       const Rect& clipRectangle,
+                                                       std::size_t rasterTargetWidth,
+                                                       std::size_t rasterTargetHeight) noexcept
+{
+    Rect clippedBounds = IntersectRectangles(coverageBounds, MakeRasterBounds(rasterTargetWidth, rasterTargetHeight));
+    clippedBounds = IntersectRectangles(clippedBounds, clipRectangle);
+    if (!HasPositiveArea(clippedBounds))
+    {
+        return PixelBounds{};
+    }
+
+    return MakePixelCenterBounds(clippedBounds, rasterTargetWidth, rasterTargetHeight);
 }
 
 [[nodiscard]] Rect ClipToRasterAndOperationClip(const Rect& rectangle,
@@ -159,6 +217,91 @@ struct PixelBounds
     return !IsPixelInsideRoundedRectangle(x, y, innerRectangle, innerCornerRadius);
 }
 
+[[nodiscard]] float SquaredDistance(Vec2 firstPoint, Vec2 secondPoint) noexcept
+{
+    const float distanceX = firstPoint.x - secondPoint.x;
+    const float distanceY = firstPoint.y - secondPoint.y;
+    return distanceX * distanceX + distanceY * distanceY;
+}
+
+[[nodiscard]] float SquaredDistanceToSegment(Vec2 point, Vec2 segmentStart, Vec2 segmentEnd) noexcept
+{
+    const float segmentX = segmentEnd.x - segmentStart.x;
+    const float segmentY = segmentEnd.y - segmentStart.y;
+    const float segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+    if (segmentLengthSquared <= 0.0f)
+    {
+        return SquaredDistance(point, segmentStart);
+    }
+
+    const float pointX = point.x - segmentStart.x;
+    const float pointY = point.y - segmentStart.y;
+    const float segmentProjection = std::clamp((pointX * segmentX + pointY * segmentY) / segmentLengthSquared,
+                                               0.0f,
+                                               1.0f);
+
+    return SquaredDistance(point,
+                           Vec2{
+                               .x = segmentStart.x + segmentX * segmentProjection,
+                               .y = segmentStart.y + segmentY * segmentProjection,
+                           });
+}
+
+[[nodiscard]] bool IsPixelCoveredByLineSegment(std::size_t x,
+                                               std::size_t y,
+                                               Vec2 segmentStart,
+                                               Vec2 segmentEnd,
+                                               float strokeThickness) noexcept
+{
+    const float halfThickness = strokeThickness * 0.5f;
+    const Vec2 pixelCenter{
+        .x = static_cast<float>(x) + 0.5f,
+        .y = static_cast<float>(y) + 0.5f,
+    };
+
+    return SquaredDistanceToSegment(pixelCenter, segmentStart, segmentEnd) <= halfThickness * halfThickness;
+}
+
+[[nodiscard]] Rect MakeLineCoverageBounds(const VisualizationLineCommand& lineCommand) noexcept
+{
+    const float halfThickness = lineCommand.strokeThickness * 0.5f;
+    return MakeRectangleFromEdges(std::min(lineCommand.start.x, lineCommand.end.x) - halfThickness,
+                                  std::min(lineCommand.start.y, lineCommand.end.y) - halfThickness,
+                                  std::max(lineCommand.start.x, lineCommand.end.x) + halfThickness + CoverageBoundsEpsilon,
+                                  std::max(lineCommand.start.y, lineCommand.end.y) + halfThickness + CoverageBoundsEpsilon);
+}
+
+[[nodiscard]] Rect MakePolylineCoverageBounds(const VisualizationPolylineCommand& polylineCommand) noexcept
+{
+    float left = polylineCommand.points[0].x;
+    float top = polylineCommand.points[0].y;
+    float right = polylineCommand.points[0].x;
+    float bottom = polylineCommand.points[0].y;
+
+    for (Vec2 point : polylineCommand.points)
+    {
+        left = std::min(left, point.x);
+        top = std::min(top, point.y);
+        right = std::max(right, point.x);
+        bottom = std::max(bottom, point.y);
+    }
+
+    const float halfThickness = polylineCommand.strokeThickness * 0.5f;
+    return MakeRectangleFromEdges(left - halfThickness,
+                                  top - halfThickness,
+                                  right + halfThickness + CoverageBoundsEpsilon,
+                                  bottom + halfThickness + CoverageBoundsEpsilon);
+}
+
+[[nodiscard]] Rect MakePointMarkerCoverageBounds(const VisualizationPointMarkerCommand& pointMarkerCommand) noexcept
+{
+    return MakeRectangleFromEdges(pointMarkerCommand.center.x - pointMarkerCommand.radius,
+                                  pointMarkerCommand.center.y - pointMarkerCommand.radius,
+                                  pointMarkerCommand.center.x + pointMarkerCommand.radius + CoverageBoundsEpsilon,
+                                  pointMarkerCommand.center.y + pointMarkerCommand.radius + CoverageBoundsEpsilon);
+}
+
 [[nodiscard]] Color BlendSourceOver(Color sourceColor, Color destinationColor) noexcept
 {
     const float sourceAlpha = std::clamp(sourceColor.alpha, 0.0f, 1.0f);
@@ -218,10 +361,24 @@ void Fast2DRenderer::Submit(const RenderCommandList& renderCommands)
     }
 }
 
+void Fast2DRenderer::SubmitVisualization(const VisualizationCommandList& visualizationCommands)
+{
+    // Copy submitted visualization commands so callers can immediately clear or
+    // destroy their command list while this frame remains pending.
+    _preparedVisualizationOperations.push_back(PreparedVisualizationOperation{
+        .clipRectangle = visualizationCommands.ClipBounds(),
+        .commands = std::vector<VisualizationCommand>(visualizationCommands.Commands().begin(),
+                                                      visualizationCommands.Commands().end()),
+    });
+    _queuedOperations.push_back(QueuedVisualizationOperation{.index = _preparedVisualizationOperations.size() - 1U});
+    _submittedVisualizationCommandCount += visualizationCommands.Size();
+}
+
 void Fast2DRenderer::EndFrame()
 {
-    RasterizePreparedFillOperations();
+    RasterizeQueuedOperations();
     _completedFrameCommandCount = _submittedCommands.Size();
+    _completedFrameVisualizationCommandCount = _submittedVisualizationCommandCount;
 }
 
 void Fast2DRenderer::ResizeRasterTarget(std::size_t width, std::size_t height)
@@ -240,6 +397,16 @@ std::size_t Fast2DRenderer::SubmittedCommandCount() const noexcept
 std::size_t Fast2DRenderer::CompletedFrameCommandCount() const noexcept
 {
     return _completedFrameCommandCount;
+}
+
+std::size_t Fast2DRenderer::SubmittedVisualizationCommandCount() const noexcept
+{
+    return _submittedVisualizationCommandCount;
+}
+
+std::size_t Fast2DRenderer::CompletedFrameVisualizationCommandCount() const noexcept
+{
+    return _completedFrameVisualizationCommandCount;
 }
 
 std::size_t Fast2DRenderer::PreparedFillOperationCount() const noexcept
@@ -329,6 +496,7 @@ void Fast2DRenderer::ConsumeFillRectangle(const RenderCommand& renderCommand)
         .hasClip = !_clipStack.empty(),
         .clipRectangle = _clipStack.empty() ? Rect{} : _clipStack.back(),
     });
+    _queuedOperations.push_back(QueuedFillOperation{.index = _preparedFillOperations.size() - 1U});
 }
 
 void Fast2DRenderer::ConsumePushClip(const RenderCommand& renderCommand)
@@ -356,11 +524,23 @@ void Fast2DRenderer::ConsumeDrawText()
     ++_deferredTextCommandCount;
 }
 
-void Fast2DRenderer::RasterizePreparedFillOperations()
+void Fast2DRenderer::RasterizeQueuedOperations()
 {
-    for (const Fast2DPreparedFillOperation& fillOperation : _preparedFillOperations)
+    // UI fills and visualization submissions share this backend-local queue so
+    // mixed Submit()/SubmitVisualization() calls draw in frame submission order.
+    for (const QueuedOperation& queuedOperation : _queuedOperations)
     {
-        RasterizeFillRectangle(fillOperation);
+        if (const QueuedFillOperation* fillOperation = std::get_if<QueuedFillOperation>(&queuedOperation))
+        {
+            RasterizeFillRectangle(_preparedFillOperations[fillOperation->index]);
+            continue;
+        }
+
+        if (const QueuedVisualizationOperation* visualizationOperation =
+                std::get_if<QueuedVisualizationOperation>(&queuedOperation))
+        {
+            RasterizeVisualizationOperation(_preparedVisualizationOperations[visualizationOperation->index]);
+        }
     }
 }
 
@@ -522,6 +702,143 @@ void Fast2DRenderer::RasterizeRoundedBorder(const Fast2DPreparedFillOperation& f
     }
 }
 
+void Fast2DRenderer::RasterizeVisualizationOperation(const PreparedVisualizationOperation& visualizationOperation)
+{
+    if (_rasterTargetWidth == 0U || _rasterTargetHeight == 0U)
+    {
+        return;
+    }
+
+    if (!HasPositiveArea(visualizationOperation.clipRectangle))
+    {
+        return;
+    }
+
+    for (const VisualizationCommand& visualizationCommand : visualizationOperation.commands)
+    {
+        RasterizeVisualizationCommand(visualizationCommand, visualizationOperation.clipRectangle);
+    }
+}
+
+void Fast2DRenderer::RasterizeVisualizationCommand(const VisualizationCommand& visualizationCommand,
+                                                   const Rect& clipRectangle)
+{
+    if (const VisualizationLineCommand* lineCommand = std::get_if<VisualizationLineCommand>(&visualizationCommand))
+    {
+        RasterizeVisualizationLine(*lineCommand, clipRectangle);
+        return;
+    }
+
+    if (const VisualizationPolylineCommand* polylineCommand =
+            std::get_if<VisualizationPolylineCommand>(&visualizationCommand))
+    {
+        RasterizeVisualizationPolyline(*polylineCommand, clipRectangle);
+        return;
+    }
+
+    if (const VisualizationPointMarkerCommand* pointMarkerCommand =
+            std::get_if<VisualizationPointMarkerCommand>(&visualizationCommand))
+    {
+        RasterizeVisualizationPointMarker(*pointMarkerCommand, clipRectangle);
+    }
+}
+
+void Fast2DRenderer::RasterizeVisualizationLine(const VisualizationLineCommand& lineCommand, const Rect& clipRectangle)
+{
+    const PixelBounds bounds =
+        MakeVisualizationPixelBounds(MakeLineCoverageBounds(lineCommand),
+                                     clipRectangle,
+                                     _rasterTargetWidth,
+                                     _rasterTargetHeight);
+
+    for (std::size_t y = bounds.top; y < bounds.bottom; ++y)
+    {
+        for (std::size_t x = bounds.left; x < bounds.right; ++x)
+        {
+            if (!IsPixelCoveredByLineSegment(x, y, lineCommand.start, lineCommand.end, lineCommand.strokeThickness))
+            {
+                continue;
+            }
+
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(lineCommand.strokeColor, destinationPixel);
+        }
+    }
+}
+
+void Fast2DRenderer::RasterizeVisualizationPolyline(const VisualizationPolylineCommand& polylineCommand,
+                                                    const Rect& clipRectangle)
+{
+    if (polylineCommand.points.size() < 2U)
+    {
+        return;
+    }
+
+    const PixelBounds bounds =
+        MakeVisualizationPixelBounds(MakePolylineCoverageBounds(polylineCommand),
+                                     clipRectangle,
+                                     _rasterTargetWidth,
+                                     _rasterTargetHeight);
+
+    for (std::size_t y = bounds.top; y < bounds.bottom; ++y)
+    {
+        for (std::size_t x = bounds.left; x < bounds.right; ++x)
+        {
+            bool isCovered = false;
+            for (std::size_t pointIndex = 1U; pointIndex < polylineCommand.points.size(); ++pointIndex)
+            {
+                if (IsPixelCoveredByLineSegment(x,
+                                                y,
+                                                polylineCommand.points[pointIndex - 1U],
+                                                polylineCommand.points[pointIndex],
+                                                polylineCommand.strokeThickness))
+                {
+                    isCovered = true;
+                    break;
+                }
+            }
+
+            if (!isCovered)
+            {
+                continue;
+            }
+
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(polylineCommand.strokeColor, destinationPixel);
+        }
+    }
+}
+
+void Fast2DRenderer::RasterizeVisualizationPointMarker(const VisualizationPointMarkerCommand& pointMarkerCommand,
+                                                       const Rect& clipRectangle)
+{
+    const PixelBounds bounds =
+        MakeVisualizationPixelBounds(MakePointMarkerCoverageBounds(pointMarkerCommand),
+                                     clipRectangle,
+                                     _rasterTargetWidth,
+                                     _rasterTargetHeight);
+    const float radiusSquared = pointMarkerCommand.radius * pointMarkerCommand.radius;
+
+    for (std::size_t y = bounds.top; y < bounds.bottom; ++y)
+    {
+        for (std::size_t x = bounds.left; x < bounds.right; ++x)
+        {
+            const Vec2 pixelCenter{
+                .x = static_cast<float>(x) + 0.5f,
+                .y = static_cast<float>(y) + 0.5f,
+            };
+
+            if (SquaredDistance(pixelCenter, pointMarkerCommand.center) > radiusSquared)
+            {
+                continue;
+            }
+
+            Color& destinationPixel = _rasterPixels[GetPixelIndex(x, y, _rasterTargetWidth)];
+            destinationPixel = BlendSourceOver(pointMarkerCommand.fillColor, destinationPixel);
+        }
+    }
+}
+
 void Fast2DRenderer::ClearRasterTarget()
 {
     std::fill(_rasterPixels.begin(), _rasterPixels.end(), Color{});
@@ -530,7 +847,10 @@ void Fast2DRenderer::ClearRasterTarget()
 void Fast2DRenderer::ClearFrameState()
 {
     _preparedFillOperations.clear();
+    _preparedVisualizationOperations.clear();
+    _queuedOperations.clear();
     _clipStack.clear();
+    _submittedVisualizationCommandCount = 0;
     _deferredTextCommandCount = 0;
     _clipUnderflowCount = 0;
 }

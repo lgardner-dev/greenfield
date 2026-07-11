@@ -1,7 +1,9 @@
 #include <cmath>
 #include <cstdlib>
+#include <vector>
 
 #include "engine/render/fast2d/Fast2DRenderer.h"
+#include "engine/visualization/VisualizationCommandList.h"
 #include "tests/TestHelpers.h"
 
 namespace
@@ -26,6 +28,26 @@ namespace
                                       const greenfield::Color& color)
 {
     return ColorsNearlyMatch(renderer.RasterPixelAt(x, y), color);
+}
+
+[[nodiscard]] greenfield::Rect FullRasterClip(std::size_t width, std::size_t height)
+{
+    return greenfield::Rect{
+        .position = greenfield::Vec2{0.0f, 0.0f},
+        .size = greenfield::Vec2{static_cast<float>(width), static_cast<float>(height)},
+    };
+}
+
+[[nodiscard]] greenfield::VisualizationCommandList MakeVisualizationCommandsWithClip(std::size_t width,
+                                                                                     std::size_t height)
+{
+    greenfield::VisualizationCommandList visualizationCommands;
+    if (!visualizationCommands.SetClipBounds(FullRasterClip(width, height)))
+    {
+        return greenfield::VisualizationCommandList{};
+    }
+
+    return visualizationCommands;
 }
 
 [[nodiscard]] bool TestConstructionSucceeds()
@@ -998,6 +1020,591 @@ namespace
            PixelMatches(renderer, 1U, 1U, Color{});
 }
 
+[[nodiscard]] bool TestEmptyVisualizationCommandListChangesNoPixels()
+{
+    using namespace greenfield;
+
+    Fast2DRenderer renderer{3U, 3U};
+    VisualizationCommandList visualizationCommands;
+    if (!visualizationCommands.SetClipBounds(FullRasterClip(3U, 3U)))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return renderer.SubmittedVisualizationCommandCount() == 0U &&
+           renderer.CompletedFrameVisualizationCommandCount() == 0U && PixelMatches(renderer, 1U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationHorizontalLineRasterizesExpectedPixels()
+{
+    using namespace greenfield;
+
+    const Color lineColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{6U, 4U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(6U, 4U);
+
+    if (!visualizationCommands.AddLine(Vec2{1.5f, 2.5f}, Vec2{4.5f, 2.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 2U, lineColor) && PixelMatches(renderer, 4U, 2U, lineColor) &&
+           PixelMatches(renderer, 0U, 2U, Color{}) && PixelMatches(renderer, 5U, 2U, Color{}) &&
+           PixelMatches(renderer, 2U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationVerticalLineRasterizesExpectedPixels()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.0f, 1.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 6U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 6U);
+
+    if (!visualizationCommands.AddLine(Vec2{2.5f, 1.5f}, Vec2{2.5f, 4.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 1U, lineColor) && PixelMatches(renderer, 2U, 4U, lineColor) &&
+           PixelMatches(renderer, 2U, 0U, Color{}) && PixelMatches(renderer, 2U, 5U, Color{}) &&
+           PixelMatches(renderer, 1U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationDiagonalLineRasterizesDeterministically()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.1f, 0.8f, 0.9f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 5U);
+
+    if (!visualizationCommands.AddLine(Vec2{0.5f, 0.5f}, Vec2{4.5f, 4.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 0U, lineColor) && PixelMatches(renderer, 2U, 2U, lineColor) &&
+           PixelMatches(renderer, 4U, 4U, lineColor) && PixelMatches(renderer, 0U, 1U, Color{}) &&
+           PixelMatches(renderer, 3U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationFractionalLineUsesPixelCenterSampling()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.8f, 0.6f, 0.1f, 1.0f};
+    Fast2DRenderer renderer{5U, 4U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 4U);
+
+    if (!visualizationCommands.AddLine(Vec2{0.5f, 1.75f}, Vec2{3.5f, 1.75f}, lineColor, 0.5f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, lineColor) && PixelMatches(renderer, 3U, 1U, lineColor) &&
+           PixelMatches(renderer, 1U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationStrokeThicknessChangesCoverage()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.4f, 0.2f, 0.9f, 1.0f};
+    Fast2DRenderer thinRenderer{5U, 4U};
+    Fast2DRenderer thickRenderer{5U, 4U};
+    VisualizationCommandList thinCommands = MakeVisualizationCommandsWithClip(5U, 4U);
+    VisualizationCommandList thickCommands = MakeVisualizationCommandsWithClip(5U, 4U);
+
+    if (!thinCommands.AddLine(Vec2{1.5f, 1.5f}, Vec2{3.5f, 1.5f}, lineColor, 1.0f) ||
+        !thickCommands.AddLine(Vec2{1.5f, 1.5f}, Vec2{3.5f, 1.5f}, lineColor, 3.0f))
+    {
+        return false;
+    }
+
+    thinRenderer.BeginFrame();
+    thinRenderer.SubmitVisualization(thinCommands);
+    thinRenderer.EndFrame();
+
+    thickRenderer.BeginFrame();
+    thickRenderer.SubmitVisualization(thickCommands);
+    thickRenderer.EndFrame();
+
+    return PixelMatches(thinRenderer, 2U, 0U, Color{}) && PixelMatches(thickRenderer, 2U, 0U, lineColor) &&
+           PixelMatches(thickRenderer, 2U, 2U, lineColor) && PixelMatches(thickRenderer, 2U, 3U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationZeroLengthLineRendersRoundMark()
+{
+    using namespace greenfield;
+
+    const Color lineColor{1.0f, 0.5f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 5U);
+
+    if (!visualizationCommands.AddLine(Vec2{2.5f, 2.5f}, Vec2{2.5f, 2.5f}, lineColor, 2.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 2U, lineColor) && PixelMatches(renderer, 3U, 2U, lineColor) &&
+           PixelMatches(renderer, 3U, 3U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationPartiallyOffscreenLineIsSafe()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.7f, 0.1f, 0.2f, 1.0f};
+    Fast2DRenderer renderer{4U, 3U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(4U, 3U);
+
+    if (!visualizationCommands.AddLine(Vec2{-2.5f, 1.5f}, Vec2{2.5f, 1.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 1U, lineColor) && PixelMatches(renderer, 2U, 1U, lineColor) &&
+           PixelMatches(renderer, 3U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationTwoPointPolylineMatchesEquivalentLine()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.0f, 0.4f, 1.0f, 1.0f};
+    Fast2DRenderer lineRenderer{5U, 4U};
+    Fast2DRenderer polylineRenderer{5U, 4U};
+    VisualizationCommandList lineCommands = MakeVisualizationCommandsWithClip(5U, 4U);
+    VisualizationCommandList polylineCommands = MakeVisualizationCommandsWithClip(5U, 4U);
+    const std::vector<Vec2> points{Vec2{1.5f, 2.5f}, Vec2{3.5f, 2.5f}};
+
+    if (!lineCommands.AddLine(points[0], points[1], lineColor, 1.0f) ||
+        !polylineCommands.AddPolyline(points, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    lineRenderer.BeginFrame();
+    lineRenderer.SubmitVisualization(lineCommands);
+    lineRenderer.EndFrame();
+
+    polylineRenderer.BeginFrame();
+    polylineRenderer.SubmitVisualization(polylineCommands);
+    polylineRenderer.EndFrame();
+
+    return ColorsNearlyMatch(lineRenderer.RasterPixelAt(1U, 2U), polylineRenderer.RasterPixelAt(1U, 2U)) &&
+           ColorsNearlyMatch(lineRenderer.RasterPixelAt(3U, 2U), polylineRenderer.RasterPixelAt(3U, 2U)) &&
+           ColorsNearlyMatch(lineRenderer.RasterPixelAt(4U, 2U), polylineRenderer.RasterPixelAt(4U, 2U));
+}
+
+[[nodiscard]] bool TestVisualizationOpenPolylineDoesNotClose()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.0f, 0.9f, 0.4f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 5U);
+    const std::vector<Vec2> points{Vec2{1.5f, 1.5f}, Vec2{3.5f, 1.5f}, Vec2{3.5f, 3.5f}};
+
+    if (!visualizationCommands.AddPolyline(points, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 1U, lineColor) && PixelMatches(renderer, 3U, 2U, lineColor) &&
+           PixelMatches(renderer, 2U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationMultiSegmentPolylineAndRepeatedPointsAreSafe()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.9f, 0.9f, 0.1f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 5U);
+    const std::vector<Vec2> points{Vec2{1.5f, 1.5f}, Vec2{1.5f, 1.5f}, Vec2{3.5f, 1.5f}, Vec2{3.5f, 3.5f}};
+
+    if (!visualizationCommands.AddPolyline(points, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, lineColor) && PixelMatches(renderer, 3U, 1U, lineColor) &&
+           PixelMatches(renderer, 3U, 3U, lineColor) && PixelMatches(renderer, 0U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationPolylineJoinBlendsOnlyOnce()
+{
+    using namespace greenfield;
+
+    const Color destinationColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color lineColor{1.0f, 0.0f, 0.0f, 0.5f};
+    Fast2DRenderer renderer{5U, 4U};
+    RenderCommandList renderCommands;
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 4U);
+    const std::vector<Vec2> points{Vec2{1.5f, 1.5f}, Vec2{3.5f, 1.5f}, Vec2{3.5f, 2.5f}};
+
+    renderCommands.AddFillRectangle(FullRasterClip(5U, 4U), destinationColor);
+    if (!visualizationCommands.AddPolyline(points, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 3U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+[[nodiscard]] bool TestVisualizationPointMarkerRasterizesExpectedPixels()
+{
+    using namespace greenfield;
+
+    const Color markerColor{1.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 5U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(5U, 5U);
+
+    if (!visualizationCommands.AddPointMarker(Vec2{2.5f, 2.5f}, 1.0f, markerColor))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 2U, markerColor) && PixelMatches(renderer, 3U, 2U, markerColor) &&
+           PixelMatches(renderer, 3U, 3U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationFractionalPointMarkerUsesPixelCenterSampling()
+{
+    using namespace greenfield;
+
+    const Color markerColor{0.4f, 1.0f, 0.2f, 1.0f};
+    Fast2DRenderer renderer{4U, 4U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(4U, 4U);
+
+    if (!visualizationCommands.AddPointMarker(Vec2{2.25f, 2.5f}, 0.3f, markerColor))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 2U, markerColor) && PixelMatches(renderer, 1U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationPartiallyOffscreenMarkerIsSafe()
+{
+    using namespace greenfield;
+
+    const Color markerColor{0.8f, 0.1f, 0.8f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+
+    if (!visualizationCommands.AddPointMarker(Vec2{-0.5f, 1.5f}, 1.1f, markerColor))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 1U, markerColor) && PixelMatches(renderer, 1U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationClipRestrictsLinePolylineAndMarker()
+{
+    using namespace greenfield;
+
+    const Color lineColor{1.0f, 0.0f, 0.0f, 1.0f};
+    const Color polylineColor{0.0f, 1.0f, 0.0f, 1.0f};
+    const Color markerColor{0.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{6U, 6U};
+    VisualizationCommandList lineCommands;
+    VisualizationCommandList polylineCommands;
+    VisualizationCommandList markerCommands;
+    const std::vector<Vec2> polylinePoints{Vec2{0.5f, 3.5f}, Vec2{5.5f, 3.5f}};
+
+    if (!lineCommands.SetClipBounds(Rect{.position = Vec2{2.0f, 1.0f}, .size = Vec2{2.0f, 1.0f}}) ||
+        !polylineCommands.SetClipBounds(Rect{.position = Vec2{1.0f, 3.0f}, .size = Vec2{2.0f, 1.0f}}) ||
+        !markerCommands.SetClipBounds(Rect{.position = Vec2{4.0f, 4.0f}, .size = Vec2{1.0f, 1.0f}}) ||
+        !lineCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{5.5f, 1.5f}, lineColor, 1.0f) ||
+        !polylineCommands.AddPolyline(polylinePoints, polylineColor, 1.0f) ||
+        !markerCommands.AddPointMarker(Vec2{4.5f, 4.5f}, 1.5f, markerColor))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(lineCommands);
+    renderer.SubmitVisualization(polylineCommands);
+    renderer.SubmitVisualization(markerCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 1U, lineColor) && PixelMatches(renderer, 1U, 1U, Color{}) &&
+           PixelMatches(renderer, 1U, 3U, polylineColor) && PixelMatches(renderer, 3U, 3U, Color{}) &&
+           PixelMatches(renderer, 4U, 4U, markerColor) && PixelMatches(renderer, 5U, 4U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationEmptyAndOutsideClipsDrawNothing()
+{
+    using namespace greenfield;
+
+    const Color lineColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{4U, 4U};
+    VisualizationCommandList zeroSizeClipCommands;
+    VisualizationCommandList outsideClipCommands;
+
+    if (!zeroSizeClipCommands.SetClipBounds(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{0.0f, 4.0f}}) ||
+        !outsideClipCommands.SetClipBounds(Rect{.position = Vec2{10.0f, 10.0f}, .size = Vec2{2.0f, 2.0f}}) ||
+        !zeroSizeClipCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{3.5f, 1.5f}, lineColor, 1.0f) ||
+        !outsideClipCommands.AddLine(Vec2{0.5f, 2.5f}, Vec2{3.5f, 2.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(zeroSizeClipCommands);
+    renderer.SubmitVisualization(outsideClipCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, Color{}) && PixelMatches(renderer, 2U, 2U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationSourceOverAlphaBlending()
+{
+    using namespace greenfield;
+
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+    renderCommands.AddFillRectangle(FullRasterClip(3U, 3U), Color{0.0f, 0.0f, 1.0f, 1.0f});
+
+    if (!visualizationCommands.AddPointMarker(Vec2{1.5f, 1.5f}, 1.0f, Color{1.0f, 0.0f, 0.0f, 0.5f}))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelNearlyMatches(renderer, 1U, 1U, Color{0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+[[nodiscard]] bool TestVisualizationSubmissionCopiesPendingData()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.8f, 0.4f, 0.2f, 1.0f};
+    Fast2DRenderer renderer{4U, 3U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(4U, 3U);
+
+    if (!visualizationCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{3.5f, 1.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    visualizationCommands.Clear();
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 2U, 1U, lineColor);
+}
+
+[[nodiscard]] bool TestVisualizationSubmissionOrderIsPreserved()
+{
+    using namespace greenfield;
+
+    const Color firstColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color secondColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    VisualizationCommandList firstCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+    VisualizationCommandList secondCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+
+    if (!firstCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{2.5f, 1.5f}, firstColor, 1.0f) ||
+        !secondCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{2.5f, 1.5f}, secondColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(firstCommands);
+    renderer.SubmitVisualization(secondCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, secondColor);
+}
+
+[[nodiscard]] bool TestUiThenVisualizationSubmissionOrderIsPreserved()
+{
+    using namespace greenfield;
+
+    const Color uiColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color visualizationColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    RenderCommandList renderCommands;
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+    renderCommands.AddFillRectangle(FullRasterClip(3U, 3U), uiColor);
+
+    if (!visualizationCommands.AddPointMarker(Vec2{1.5f, 1.5f}, 1.0f, visualizationColor))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, visualizationColor);
+}
+
+[[nodiscard]] bool TestVisualizationThenUiSubmissionOrderIsPreserved()
+{
+    using namespace greenfield;
+
+    const Color visualizationColor{1.0f, 0.0f, 0.0f, 1.0f};
+    const Color uiColor{0.0f, 0.0f, 1.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+    RenderCommandList renderCommands;
+    renderCommands.AddFillRectangle(FullRasterClip(3U, 3U), uiColor);
+
+    if (!visualizationCommands.AddPointMarker(Vec2{1.5f, 1.5f}, 1.0f, visualizationColor))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.Submit(renderCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, uiColor);
+}
+
+[[nodiscard]] bool TestVisualizationClipStateDoesNotLeak()
+{
+    using namespace greenfield;
+
+    const Color firstColor{1.0f, 0.0f, 0.0f, 1.0f};
+    const Color secondColor{0.0f, 1.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{5U, 3U};
+    VisualizationCommandList clippedCommands;
+    VisualizationCommandList fullCommands = MakeVisualizationCommandsWithClip(5U, 3U);
+
+    if (!clippedCommands.SetClipBounds(Rect{.position = Vec2{0.0f, 1.0f}, .size = Vec2{1.0f, 1.0f}}) ||
+        !clippedCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{4.5f, 1.5f}, firstColor, 1.0f) ||
+        !fullCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{4.5f, 1.5f}, secondColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(clippedCommands);
+    renderer.SubmitVisualization(fullCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 0U, 1U, secondColor) && PixelMatches(renderer, 3U, 1U, secondColor);
+}
+
+[[nodiscard]] bool TestBeginFrameClearsPendingVisualizationState()
+{
+    using namespace greenfield;
+
+    const Color lineColor{1.0f, 0.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{3U, 3U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+
+    if (!visualizationCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{2.5f, 1.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.BeginFrame();
+    renderer.EndFrame();
+
+    return renderer.SubmittedVisualizationCommandCount() == 0U && PixelMatches(renderer, 1U, 1U, Color{});
+}
+
+[[nodiscard]] bool TestVisualizationEmptyRasterTargetAndResizeAreSafe()
+{
+    using namespace greenfield;
+
+    const Color lineColor{0.3f, 0.7f, 0.1f, 1.0f};
+    Fast2DRenderer renderer{0U, 0U};
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(3U, 3U);
+
+    if (!visualizationCommands.AddLine(Vec2{0.5f, 1.5f}, Vec2{2.5f, 1.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+    if (!renderer.RasterPixels().empty())
+    {
+        return false;
+    }
+
+    renderer.ResizeRasterTarget(3U, 3U);
+    renderer.BeginFrame();
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.EndFrame();
+
+    return PixelMatches(renderer, 1U, 1U, lineColor);
+}
+
 } // namespace
 
 int main()
@@ -1033,7 +1640,31 @@ int main()
         !TestPopClipRestoresPreviousRasterClip() ||
         !TestOutOfBoundsRectanglesAreClippedToRasterTarget() ||
         !TestClipOutsideRasterTargetIsClippedSafely() || !TestDrawTextDoesNotAlterRasterPixels() ||
-        !TestBeginFrameResetsRasterPixels())
+        !TestBeginFrameResetsRasterPixels() || !TestEmptyVisualizationCommandListChangesNoPixels() ||
+        !TestVisualizationHorizontalLineRasterizesExpectedPixels() ||
+        !TestVisualizationVerticalLineRasterizesExpectedPixels() ||
+        !TestVisualizationDiagonalLineRasterizesDeterministically() ||
+        !TestVisualizationFractionalLineUsesPixelCenterSampling() ||
+        !TestVisualizationStrokeThicknessChangesCoverage() ||
+        !TestVisualizationZeroLengthLineRendersRoundMark() ||
+        !TestVisualizationPartiallyOffscreenLineIsSafe() ||
+        !TestVisualizationTwoPointPolylineMatchesEquivalentLine() ||
+        !TestVisualizationOpenPolylineDoesNotClose() ||
+        !TestVisualizationMultiSegmentPolylineAndRepeatedPointsAreSafe() ||
+        !TestVisualizationPolylineJoinBlendsOnlyOnce() ||
+        !TestVisualizationPointMarkerRasterizesExpectedPixels() ||
+        !TestVisualizationFractionalPointMarkerUsesPixelCenterSampling() ||
+        !TestVisualizationPartiallyOffscreenMarkerIsSafe() ||
+        !TestVisualizationClipRestrictsLinePolylineAndMarker() ||
+        !TestVisualizationEmptyAndOutsideClipsDrawNothing() ||
+        !TestVisualizationSourceOverAlphaBlending() ||
+        !TestVisualizationSubmissionCopiesPendingData() ||
+        !TestVisualizationSubmissionOrderIsPreserved() ||
+        !TestUiThenVisualizationSubmissionOrderIsPreserved() ||
+        !TestVisualizationThenUiSubmissionOrderIsPreserved() ||
+        !TestVisualizationClipStateDoesNotLeak() ||
+        !TestBeginFrameClearsPendingVisualizationState() ||
+        !TestVisualizationEmptyRasterTargetAndResizeAreSafe())
     {
         return EXIT_FAILURE;
     }

@@ -65,7 +65,7 @@ add_library(greenfield_render_fast2d
     engine/render/fast2d/Fast2DRenderer.cpp
 )
 target_include_directories(greenfield_render_fast2d PUBLIC "${PROJECT_SOURCE_DIR}")
-target_link_libraries(greenfield_render_fast2d PUBLIC greenfield_core greenfield_render)
+target_link_libraries(greenfield_render_fast2d PUBLIC greenfield_core greenfield_render greenfield_visualization)
 greenfield_enable_warnings(greenfield_render_fast2d)
 
 add_library(greenfield_ui
