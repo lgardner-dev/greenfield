@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 set(GREENFIELD_BUILD_PROFILE "developer" CACHE STRING "Greenfield build profile: developer or headless-fast2d")
 set_property(CACHE GREENFIELD_BUILD_PROFILE PROPERTY STRINGS developer headless-fast2d)
+option(GREENFIELD_BUILD_RENDERER_STARTUP_PROBE "Build the opt-in native WebGPU renderer startup probe" OFF)
 
 set(_greenfield_supported_build_profiles developer headless-fast2d)
 if(NOT GREENFIELD_BUILD_PROFILE IN_LIST _greenfield_supported_build_profiles)
@@ -109,6 +110,16 @@ if(GREENFIELD_BUILD_DEVELOPER_PROFILE)
     target_link_libraries(greenfield_sandbox PRIVATE greenfield_core greenfield_render greenfield_ui greenfield_sdl_platform
                                                       greenfield_render_fast2d greenfield_render_webgpu)
     greenfield_enable_warnings(greenfield_sandbox)
+
+    if(GREENFIELD_BUILD_RENDERER_STARTUP_PROBE)
+        add_executable(greenfield_renderer_startup_probe
+            apps/renderer_startup_probe/main.cpp
+        )
+        target_include_directories(greenfield_renderer_startup_probe PRIVATE "${PROJECT_SOURCE_DIR}")
+        target_link_libraries(greenfield_renderer_startup_probe PRIVATE greenfield_core greenfield_sdl_platform
+                                                                        dawn::webgpu_dawn)
+        greenfield_enable_warnings(greenfield_renderer_startup_probe)
+    endif()
 endif()
 
 if(BUILD_TESTING)
