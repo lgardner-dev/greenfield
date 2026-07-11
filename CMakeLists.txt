@@ -54,6 +54,7 @@ target_include_directories(greenfield_render INTERFACE "${PROJECT_SOURCE_DIR}")
 target_link_libraries(greenfield_render INTERFACE greenfield_core)
 
 add_library(greenfield_visualization
+    engine/visualization/VisualizationCommandList.cpp
     engine/visualization/Viewport2D.cpp
 )
 target_include_directories(greenfield_visualization PUBLIC "${PROJECT_SOURCE_DIR}")
@@ -161,6 +162,14 @@ if(BUILD_TESTING)
     target_link_libraries(greenfield_viewport2d_tests PRIVATE greenfield_core greenfield_visualization)
     greenfield_enable_warnings(greenfield_viewport2d_tests)
     add_test(NAME greenfield_viewport2d_tests COMMAND greenfield_viewport2d_tests)
+
+    add_executable(greenfield_visualization_command_tests
+        tests/visualization_command_tests.cpp
+    )
+    target_include_directories(greenfield_visualization_command_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+    target_link_libraries(greenfield_visualization_command_tests PRIVATE greenfield_core greenfield_visualization)
+    greenfield_enable_warnings(greenfield_visualization_command_tests)
+    add_test(NAME greenfield_visualization_command_tests COMMAND greenfield_visualization_command_tests)
 
     add_executable(greenfield_fast2d_renderer_tests
         tests/fast2d_renderer_tests.cpp
