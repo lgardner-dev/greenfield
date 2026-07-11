@@ -95,6 +95,14 @@ struct Fast2DProfileStageSamples
     std::vector<double> overlaySubmissionMilliseconds;
     std::vector<double> endFrameMilliseconds;
     std::vector<double> sdlRasterPresentationMilliseconds;
+    std::vector<double> sdlRasterColorConversionMilliseconds;
+    std::vector<double> sdlRasterSourceSurfaceCreationMilliseconds;
+    std::vector<double> sdlRasterWindowSurfaceAcquisitionMilliseconds;
+    std::vector<double> sdlRasterBlitMilliseconds;
+    std::vector<double> sdlRasterWindowSurfaceUpdateMilliseconds;
+    std::vector<double> sdlRasterFirstWindowShowMilliseconds;
+    std::vector<double> sdlRasterWindowSyncMilliseconds;
+    std::vector<double> sdlRasterPresenterTotalMilliseconds;
     std::vector<double> totalFrameMilliseconds;
 };
 
@@ -108,6 +116,7 @@ struct Fast2DProfileFrameTiming
     double overlaySubmissionMilliseconds{0.0};
     double endFrameMilliseconds{0.0};
     double sdlRasterPresentationMilliseconds{0.0};
+    SdlRasterPresenterFrameTiming sdlRasterPresenterTiming{};
     double totalFrameMilliseconds{0.0};
 };
 
@@ -513,6 +522,18 @@ void AddFrameTimingSample(Fast2DProfileStageSamples& samples, const Fast2DProfil
     samples.overlaySubmissionMilliseconds.push_back(frameTiming.overlaySubmissionMilliseconds);
     samples.endFrameMilliseconds.push_back(frameTiming.endFrameMilliseconds);
     samples.sdlRasterPresentationMilliseconds.push_back(frameTiming.sdlRasterPresentationMilliseconds);
+    samples.sdlRasterColorConversionMilliseconds.push_back(frameTiming.sdlRasterPresenterTiming.colorConversionMilliseconds);
+    samples.sdlRasterSourceSurfaceCreationMilliseconds.push_back(
+        frameTiming.sdlRasterPresenterTiming.sourceSurfaceCreationMilliseconds);
+    samples.sdlRasterWindowSurfaceAcquisitionMilliseconds.push_back(
+        frameTiming.sdlRasterPresenterTiming.windowSurfaceAcquisitionMilliseconds);
+    samples.sdlRasterBlitMilliseconds.push_back(frameTiming.sdlRasterPresenterTiming.blitMilliseconds);
+    samples.sdlRasterWindowSurfaceUpdateMilliseconds.push_back(
+        frameTiming.sdlRasterPresenterTiming.windowSurfaceUpdateMilliseconds);
+    samples.sdlRasterFirstWindowShowMilliseconds.push_back(
+        frameTiming.sdlRasterPresenterTiming.firstWindowShowMilliseconds);
+    samples.sdlRasterWindowSyncMilliseconds.push_back(frameTiming.sdlRasterPresenterTiming.windowSyncMilliseconds);
+    samples.sdlRasterPresenterTotalMilliseconds.push_back(frameTiming.sdlRasterPresenterTiming.totalMilliseconds);
     samples.totalFrameMilliseconds.push_back(frameTiming.totalFrameMilliseconds);
 }
 
@@ -546,6 +567,14 @@ void PrintFast2DProfileSummary(const Fast2DProfileScenario& scenario,
     PrintStageSummary("overlay UI Submit/preparation", samples.overlaySubmissionMilliseconds);
     PrintStageSummary("Fast2D EndFrame/rasterization", samples.endFrameMilliseconds);
     PrintStageSummary("SDL raster presentation", samples.sdlRasterPresentationMilliseconds);
+    PrintStageSummary("  presenter Color to RGBA bytes", samples.sdlRasterColorConversionMilliseconds);
+    PrintStageSummary("  presenter source surface create", samples.sdlRasterSourceSurfaceCreationMilliseconds);
+    PrintStageSummary("  presenter window surface lookup", samples.sdlRasterWindowSurfaceAcquisitionMilliseconds);
+    PrintStageSummary("  presenter SDL blit/convert", samples.sdlRasterBlitMilliseconds);
+    PrintStageSummary("  presenter SDL window update", samples.sdlRasterWindowSurfaceUpdateMilliseconds);
+    PrintStageSummary("  presenter first window show", samples.sdlRasterFirstWindowShowMilliseconds);
+    PrintStageSummary("  presenter SDL window sync", samples.sdlRasterWindowSyncMilliseconds);
+    PrintStageSummary("  presenter measured total", samples.sdlRasterPresenterTotalMilliseconds);
     PrintStageSummary("total measured frame", samples.totalFrameMilliseconds);
     std::cout << "  Last measured frame: " << observations.renderCommandCount << " UI commands, "
               << observations.visualizationCommandCount << " visualization commands, "
@@ -1098,7 +1127,10 @@ int RunFast2DProfileScenario(const Fast2DProfileScenario& scenario,
 
         stageStart = std::chrono::steady_clock::now();
         const bool presented =
-            presenter.PresentRaster(renderer.RasterTargetWidth(), renderer.RasterTargetHeight(), renderer.RasterPixels());
+            presenter.PresentRaster(renderer.RasterTargetWidth(),
+                                    renderer.RasterTargetHeight(),
+                                    renderer.RasterPixels(),
+                                    &frameTiming.sdlRasterPresenterTiming);
         stageEnd = std::chrono::steady_clock::now();
         frameTiming.sdlRasterPresentationMilliseconds = MillisecondsBetween(stageStart, stageEnd);
         if (!presented)
