@@ -288,9 +288,9 @@ fn IsCoveredByPolyline(pixelCenter: vec2f, pointOffset: u32, pointCount: u32, st
 }
 
 @fragment
-fn FragmentMain(input: VertexOutput, @builtin(position) fragmentPosition: vec4f) -> @location(0) vec4f {
+fn FragmentMain(input: VertexOutput) -> @location(0) vec4f {
     // WebGPU fragment positions are framebuffer pixel-center coordinates.
-    let pixelCenter = fragmentPosition.xy;
+    let pixelCenter = input.position.xy;
     var isCovered = false;
 
     if (input.primitiveKind == 0u) {

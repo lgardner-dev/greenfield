@@ -1,5 +1,6 @@
 #include "engine/render/webgpu/WebGpuContext.h"
 
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -182,6 +183,9 @@ void WebGpuContext::RequestDevice()
     wgpu::DeviceDescriptor descriptor{};
     descriptor.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous,
                                      [](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView) {});
+    descriptor.SetUncapturedErrorCallback([](const wgpu::Device&, wgpu::ErrorType, wgpu::StringView message) {
+        std::cerr << "WebGPU uncaptured error: " << ToString(message) << '\n';
+    });
 
     DeviceRequestResult deviceRequestResult{};
     auto callback = [&deviceRequestResult](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message) {

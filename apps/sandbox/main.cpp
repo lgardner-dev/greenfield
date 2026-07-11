@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -7,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "engine/core/Color.h"
 #include "engine/core/Rect.h"
@@ -22,6 +25,8 @@
 #include "engine/ui/Layout.h"
 #include "engine/ui/Style.h"
 #include "engine/ui/UiContext.h"
+#include "engine/visualization/Viewport2D.h"
+#include "engine/visualization/VisualizationCommandList.h"
 
 namespace
 {
@@ -71,6 +76,11 @@ struct SandboxOptions
     RendererBackendKind rendererBackendKind{RendererBackendKind::WebGpu};
     bool runHeadlessFast2D{false};
     std::string invalidRendererName{};
+};
+
+struct ControlRoomFrameRegions
+{
+    Rect visualizationPlotBounds{};
 };
 
 constexpr Color BackgroundColor{0.055f, 0.065f, 0.078f, 1.0f};
@@ -159,6 +169,29 @@ Rect MakeRectangle(float x, float y, float width, float height)
     };
 }
 
+Rect InsetRectangleBy(const Rect& rectangle, float horizontalInset, float verticalInset)
+{
+    return MakeRectangle(rectangle.position.x + horizontalInset,
+                         rectangle.position.y + verticalInset,
+                         std::max(0.0f, rectangle.size.x - horizontalInset * 2.0f),
+                         std::max(0.0f, rectangle.size.y - verticalInset * 2.0f));
+}
+
+Vec2 ConvertWorldPointToScreen(const Viewport2D& viewport, float x, float y)
+{
+    return viewport.WorldToScreen(Vec2{.x = x, .y = y});
+}
+
+float CalculateVisualizationScale(const Rect& plotBounds)
+{
+    constexpr float WorldWidth = 32.0f;
+    constexpr float WorldHeight = 1.7f;
+
+    const float horizontalScale = plotBounds.size.x / WorldWidth;
+    const float verticalScale = plotBounds.size.y / WorldHeight;
+    return std::max(1.0f, std::min(horizontalScale, verticalScale));
+}
+
 void DrawText(UiContext& uiContext, const char* text, float x, float y, float width, float height, float fontSize,
               Color color)
 {
@@ -178,6 +211,93 @@ void DrawSectionTitle(UiContext& uiContext, const Rect& bounds, const char* titl
 {
     DrawText(uiContext, title, bounds.position.x, bounds.position.y, bounds.size.x, 28.0f, 20.0f, TextPrimaryColor);
     DrawText(uiContext, detail, bounds.position.x, bounds.position.y + 30.0f, bounds.size.x, 22.0f, 14.0f, TextSecondaryColor);
+}
+
+VisualizationCommandList BuildResponseTraceVisualizationCommands(const Rect& plotBounds)
+{
+    VisualizationCommandList visualizationCommands;
+    (void)visualizationCommands.SetClipBounds(plotBounds);
+
+    const Viewport2D viewport{
+        plotBounds,
+        Vec2{.x = 16.0f, .y = 0.0f},
+        CalculateVisualizationScale(plotBounds),
+    };
+
+    std::vector<Vec2> primaryTracePoints;
+    primaryTracePoints.reserve(25U);
+    for (int pointIndex = 0; pointIndex <= 24; ++pointIndex)
+    {
+        const float x = static_cast<float>(pointIndex) * (32.0f / 24.0f);
+        const float y = 0.58f * std::sin(x * 0.58f) + 0.22f * std::cos(x * 1.16f);
+        primaryTracePoints.push_back(ConvertWorldPointToScreen(viewport, x, y));
+    }
+
+    std::vector<Vec2> referenceTracePoints;
+    referenceTracePoints.reserve(13U);
+    for (int pointIndex = 0; pointIndex <= 12; ++pointIndex)
+    {
+        const float x = static_cast<float>(pointIndex) * (32.0f / 12.0f);
+        const float y = 0.34f * std::sin(x * 0.38f + 0.9f);
+        referenceTracePoints.push_back(ConvertWorldPointToScreen(viewport, x, y));
+    }
+
+    (void)visualizationCommands.AddLine(ConvertWorldPointToScreen(viewport, -2.0f, -0.78f),
+                                        ConvertWorldPointToScreen(viewport, 5.5f, -0.78f),
+                                        Color{0.960f, 0.640f, 0.220f, 0.84f},
+                                        3.0f);
+    (void)visualizationCommands.AddLine(ConvertWorldPointToScreen(viewport, 28.0f, 0.88f),
+                                        ConvertWorldPointToScreen(viewport, 34.0f, 0.88f),
+                                        Color{0.180f, 0.770f, 0.560f, 0.76f},
+                                        2.0f);
+    (void)visualizationCommands.AddPolyline(referenceTracePoints,
+                                            Color{0.640f, 0.730f, 0.830f, 0.58f},
+                                            2.0f);
+    (void)visualizationCommands.AddPolyline(primaryTracePoints, BlueAccentColor, 2.5f);
+
+    constexpr std::array<int, 6> MarkerIndexes{2, 6, 10, 14, 18, 23};
+    for (int markerIndex : MarkerIndexes)
+    {
+        (void)visualizationCommands.AddPointMarker(primaryTracePoints[static_cast<std::size_t>(markerIndex)],
+                                                   4.5f,
+                                                   Color{0.925f, 0.965f, 1.0f, 0.92f});
+    }
+
+    (void)visualizationCommands.AddPointMarker(ConvertWorldPointToScreen(viewport, 32.7f, 0.02f),
+                                               5.5f,
+                                               Color{0.940f, 0.270f, 0.250f, 0.82f});
+
+    return visualizationCommands;
+}
+
+RenderCommandList BuildResponseTraceOverlayCommands(const Rect& plotBounds)
+{
+    RenderCommandList overlayCommands;
+
+    const Rect badgeBounds = MakeRectangle(plotBounds.position.x + plotBounds.size.x * 0.55f,
+                                           plotBounds.position.y + 8.0f,
+                                           100.0f,
+                                           26.0f);
+    overlayCommands.AddFillRectangle(badgeBounds,
+                                     Color{0.080f, 0.100f, 0.125f, 0.96f},
+                                     10.0f,
+                                     Color{0.270f, 0.610f, 0.960f, 0.62f},
+                                     1.0f);
+    overlayCommands.AddFillRectangle(MakeRectangle(badgeBounds.position.x + 10.0f,
+                                                   badgeBounds.position.y + 9.0f,
+                                                   18.0f,
+                                                   8.0f),
+                                     BlueAccentColor,
+                                     4.0f);
+    overlayCommands.AddText("Trace A",
+                            MakeRectangle(badgeBounds.position.x + 34.0f,
+                                          badgeBounds.position.y + 5.0f,
+                                          58.0f,
+                                          16.0f),
+                            12.0f,
+                            TextPrimaryColor);
+
+    return overlayCommands;
 }
 
 std::string FindDefaultFontPath()
@@ -338,7 +458,7 @@ void DrawMetricCard(UiContext& uiContext, const Rect& bounds, const MetricCard& 
     DrawText(uiContext, metricCard.detail, bounds.position.x + 16.0f, bounds.position.y + 100.0f, bounds.size.x - 32.0f, 20.0f, 13.0f, MutedTextColor);
 }
 
-void DrawSystemHealthPanel(UiContext& uiContext, const Rect& bounds)
+ControlRoomFrameRegions DrawSystemHealthPanel(UiContext& uiContext, const Rect& bounds)
 {
     uiContext.Panel(bounds, MakePanelStyle(SurfaceColor));
     DrawSectionTitle(uiContext, MakeRectangle(bounds.position.x + 22.0f, bounds.position.y + 20.0f, 360.0f, 58.0f), "System Health", "Live synthetic state for a generic system");
@@ -368,22 +488,70 @@ void DrawSystemHealthPanel(UiContext& uiContext, const Rect& bounds)
         DrawMetricCard(uiContext, CalculateColumnRegion(cardRowBounds, index, MetricCards.size(), cardGap), MetricCards[index]);
     }
 
-    const Rect summaryPanel = MakeRectangle(bounds.position.x + 22.0f, bounds.position.y + 248.0f, bounds.size.x - 44.0f, bounds.size.y - 270.0f);
-    uiContext.Panel(summaryPanel, MakePanelStyle(SurfaceSoftColor));
-    DrawText(uiContext, "Operational Posture", summaryPanel.position.x + 18.0f, summaryPanel.position.y + 16.0f, 240.0f, 24.0f, 18.0f, TextPrimaryColor);
-    DrawText(uiContext, "Nominal service envelope with two warning observations pending review.", summaryPanel.position.x + 18.0f, summaryPanel.position.y + 48.0f, summaryPanel.size.x - 36.0f, 24.0f, 15.0f, TextSecondaryColor);
-    uiContext.Panel(MakeRectangle(summaryPanel.position.x + 18.0f, summaryPanel.position.y + 88.0f, summaryPanel.size.x - 36.0f, 18.0f),
+    const Rect visualizationPanel =
+        MakeRectangle(bounds.position.x + 22.0f, bounds.position.y + 244.0f, bounds.size.x - 44.0f, bounds.size.y - 266.0f);
+    uiContext.Panel(visualizationPanel, MakePanelStyle(SurfaceSoftColor));
+    DrawText(uiContext,
+             "Response Trace",
+             visualizationPanel.position.x + 18.0f,
+             visualizationPanel.position.y + 12.0f,
+             180.0f,
+             22.0f,
+             17.0f,
+             TextPrimaryColor);
+    DrawText(uiContext,
+             "Static viewport sample",
+             visualizationPanel.position.x + visualizationPanel.size.x - 160.0f,
+             visualizationPanel.position.y + 14.0f,
+             136.0f,
+             18.0f,
+             12.0f,
+             TextSecondaryColor);
+
+    const Rect plotBounds = MakeRectangle(visualizationPanel.position.x + 18.0f,
+                                          visualizationPanel.position.y + 40.0f,
+                                          visualizationPanel.size.x - 36.0f,
+                                          std::max(28.0f, visualizationPanel.size.y - 52.0f));
+    uiContext.Panel(plotBounds,
                     RectangleStyle{
                         .fillColor = Color{0.050f, 0.065f, 0.085f, 0.92f},
-                        .cornerRadius = 9.0f,
+                        .cornerRadius = 8.0f,
                         .borderColor = Color{0.250f, 0.310f, 0.390f, 0.48f},
                         .borderThickness = 1.0f,
                     });
-    uiContext.Panel(MakeRectangle(summaryPanel.position.x + 18.0f, summaryPanel.position.y + 88.0f, (summaryPanel.size.x - 36.0f) * 0.76f, 18.0f),
+
+    uiContext.Panel(MakeRectangle(plotBounds.position.x + plotBounds.size.x * 0.25f,
+                                  plotBounds.position.y + 1.0f,
+                                  1.0f,
+                                  plotBounds.size.y - 2.0f),
                     RectangleStyle{
-                        .fillColor = GreenAccentColor,
-                        .cornerRadius = 9.0f,
+                        .fillColor = Color{0.250f, 0.310f, 0.390f, 0.42f},
                     });
+    uiContext.Panel(MakeRectangle(plotBounds.position.x + plotBounds.size.x * 0.50f,
+                                  plotBounds.position.y + 1.0f,
+                                  1.0f,
+                                  plotBounds.size.y - 2.0f),
+                    RectangleStyle{
+                        .fillColor = Color{0.250f, 0.310f, 0.390f, 0.42f},
+                    });
+    uiContext.Panel(MakeRectangle(plotBounds.position.x + plotBounds.size.x * 0.75f,
+                                  plotBounds.position.y + 1.0f,
+                                  1.0f,
+                                  plotBounds.size.y - 2.0f),
+                    RectangleStyle{
+                        .fillColor = Color{0.250f, 0.310f, 0.390f, 0.42f},
+                    });
+    uiContext.Panel(MakeRectangle(plotBounds.position.x + 1.0f,
+                                  plotBounds.position.y + plotBounds.size.y * 0.5f,
+                                  plotBounds.size.x - 2.0f,
+                                  1.0f),
+                    RectangleStyle{
+                        .fillColor = Color{0.250f, 0.310f, 0.390f, 0.42f},
+                    });
+
+    return ControlRoomFrameRegions{
+        .visualizationPlotBounds = InsetRectangleBy(plotBounds, 1.0f, 1.0f),
+    };
 }
 
 void DrawAlertQueuePanel(UiContext& uiContext, const Rect& bounds)
@@ -494,7 +662,7 @@ void DrawAssetStatusPanel(UiContext& uiContext, const Rect& bounds, DashboardSta
     }
 }
 
-void BuildControlRoomUi(UiContext& uiContext, const Rect& rootBounds, DashboardState& dashboardState)
+ControlRoomFrameRegions BuildControlRoomUi(UiContext& uiContext, const Rect& rootBounds, DashboardState& dashboardState)
 {
     const float margin = ClampLayoutValue(PercentageWidth(rootBounds, 0.01875f), 24.0f, 36.0f);
     const float gap = ClampLayoutValue(PercentageWidth(rootBounds, 0.014f), 18.0f, 24.0f);
@@ -518,12 +686,14 @@ void BuildControlRoomUi(UiContext& uiContext, const Rect& rootBounds, DashboardS
     const float bottomPanelHeight = ClampLayoutValue(PercentageHeight(centerAndRight.first, 0.32f), 196.0f, 260.0f);
     const LayoutSplit healthAndAssets =
         SplitRectangleVerticallyFixedFlexible(centerAndRight.first, bottomPanelHeight, gap, FixedRegion::Second);
-    DrawSystemHealthPanel(uiContext, healthAndAssets.first);
+    const ControlRoomFrameRegions frameRegions = DrawSystemHealthPanel(uiContext, healthAndAssets.first);
     DrawAssetStatusPanel(uiContext, healthAndAssets.second, dashboardState);
 
     const LayoutSplit alertsAndActions = SplitRectangleVerticallyByPercentage(centerAndRight.second, 0.58f, gap);
     DrawAlertQueuePanel(uiContext, alertsAndActions.first);
     DrawControlActionsPanel(uiContext, alertsAndActions.second, dashboardState);
+
+    return frameRegions;
 }
 
 void ConfigureControlRoomStyle(UiContext& uiContext)
@@ -552,11 +722,37 @@ void ConfigureControlRoomStyle(UiContext& uiContext)
     };
 }
 
-void BuildControlRoomFrame(UiContext& uiContext, const Layout& layout, DashboardState& dashboardState,
-                           const InputState& inputState = {})
+ControlRoomFrameRegions BuildControlRoomFrame(UiContext& uiContext, const Layout& layout, DashboardState& dashboardState,
+                                              const InputState& inputState = {})
 {
     uiContext.BeginFrame(layout, inputState);
-    BuildControlRoomUi(uiContext, layout.bounds, dashboardState);
+    return BuildControlRoomUi(uiContext, layout.bounds, dashboardState);
+}
+
+void SubmitControlRoomFrame(Fast2DRenderer& renderer,
+                            const RenderCommandList& renderCommands,
+                            const ControlRoomFrameRegions& frameRegions)
+{
+    VisualizationCommandList visualizationCommands =
+        BuildResponseTraceVisualizationCommands(frameRegions.visualizationPlotBounds);
+    RenderCommandList overlayCommands = BuildResponseTraceOverlayCommands(frameRegions.visualizationPlotBounds);
+
+    renderer.Submit(renderCommands);
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.Submit(overlayCommands);
+}
+
+void SubmitControlRoomFrame(WebGpuRenderer& renderer,
+                            const RenderCommandList& renderCommands,
+                            const ControlRoomFrameRegions& frameRegions)
+{
+    VisualizationCommandList visualizationCommands =
+        BuildResponseTraceVisualizationCommands(frameRegions.visualizationPlotBounds);
+    RenderCommandList overlayCommands = BuildResponseTraceOverlayCommands(frameRegions.visualizationPlotBounds);
+
+    renderer.Submit(renderCommands);
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.Submit(overlayCommands);
 }
 
 int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
@@ -573,14 +769,16 @@ int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
 
     const Layout layout =
         MakeSandboxLayout(static_cast<float>(initialWindowSize.width), static_cast<float>(initialWindowSize.height));
-    BuildControlRoomFrame(uiContext, layout, dashboardState);
+    const ControlRoomFrameRegions frameRegions = BuildControlRoomFrame(uiContext, layout, dashboardState);
 
     const auto& renderCommands = uiContext.EndFrame();
-    renderer.Submit(renderCommands);
+    SubmitControlRoomFrame(renderer, renderCommands, frameRegions);
     renderer.EndFrame();
 
     std::cout << "Fast2D diagnostic frame complete: " << renderer.CompletedFrameCommandCount()
-              << " commands, " << renderer.PreparedFillOperationCount() << " fill operations, "
+              << " commands, " << renderer.SubmittedVisualizationCommandCount()
+              << " submitted visualization commands, " << renderer.CompletedFrameVisualizationCommandCount()
+              << " completed visualization commands, " << renderer.PreparedFillOperationCount() << " fill operations, "
               << renderer.DeferredTextCommandCount() << " deferred text commands, raster target "
               << renderer.RasterTargetWidth() << "x" << renderer.RasterTargetHeight() << ".\n";
 
@@ -625,10 +823,11 @@ int RunFast2DSandbox(const SandboxWindowSize& initialWindowSize)
 
         const Layout layout =
             MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
-        BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
+        const ControlRoomFrameRegions frameRegions =
+            BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
 
         const auto& renderCommands = uiContext.EndFrame();
-        renderer.Submit(renderCommands);
+        SubmitControlRoomFrame(renderer, renderCommands, frameRegions);
         renderer.EndFrame();
         if (!presenter.PresentRaster(renderer.RasterTargetWidth(), renderer.RasterTargetHeight(), renderer.RasterPixels()))
         {
@@ -683,10 +882,11 @@ int RunWebGpuSandbox(const SandboxWindowSize& initialWindowSize)
 
         const Layout layout =
             MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
-        BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
+        const ControlRoomFrameRegions frameRegions =
+            BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
 
         const auto& renderCommands = uiContext.EndFrame();
-        renderer.Submit(renderCommands);
+        SubmitControlRoomFrame(renderer, renderCommands, frameRegions);
         renderer.EndFrame();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
