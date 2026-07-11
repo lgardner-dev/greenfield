@@ -8,6 +8,7 @@ set(_guarded_roots
     engine/input
     engine/render/fast2d
     engine/ui
+    engine/visualization
 )
 
 foreach(_guarded_root IN LISTS _guarded_roots)
