@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -204,6 +205,114 @@ fn FragmentMain(input: VertexOutput) -> @location(0) vec4f {
 )";
 }
 
+const char* GetVisualizationShaderSource()
+{
+    return R"(
+@group(0) @binding(0) var<storage, read> polylinePoints: array<vec2f>;
+
+struct VertexInput {
+    @location(0) position: vec2f,
+    @location(1) color: vec4f,
+    @location(2) firstPoint: vec2f,
+    @location(3) secondPoint: vec2f,
+    @location(4) thicknessOrRadius: f32,
+    @location(5) primitiveKind: u32,
+    @location(6) pointOffset: u32,
+    @location(7) pointCount: u32,
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) color: vec4f,
+    @location(1) firstPoint: vec2f,
+    @location(2) secondPoint: vec2f,
+    @location(3) thicknessOrRadius: f32,
+    @location(4) @interpolate(flat) primitiveKind: u32,
+    @location(5) @interpolate(flat) pointOffset: u32,
+    @location(6) @interpolate(flat) pointCount: u32,
+};
+
+@vertex
+fn VertexMain(input: VertexInput) -> VertexOutput {
+    var output: VertexOutput;
+    output.position = vec4f(input.position, 0.0, 1.0);
+    output.color = input.color;
+    output.firstPoint = input.firstPoint;
+    output.secondPoint = input.secondPoint;
+    output.thicknessOrRadius = input.thicknessOrRadius;
+    output.primitiveKind = input.primitiveKind;
+    output.pointOffset = input.pointOffset;
+    output.pointCount = input.pointCount;
+    return output;
+}
+
+fn SquaredDistance(firstPoint: vec2f, secondPoint: vec2f) -> f32 {
+    let distance = firstPoint - secondPoint;
+    return dot(distance, distance);
+}
+
+fn SquaredDistanceToSegment(point: vec2f, segmentStart: vec2f, segmentEnd: vec2f) -> f32 {
+    let segment = segmentEnd - segmentStart;
+    let segmentLengthSquared = dot(segment, segment);
+    if (segmentLengthSquared <= 0.0) {
+        return SquaredDistance(point, segmentStart);
+    }
+
+    let projection = clamp(dot(point - segmentStart, segment) / segmentLengthSquared, 0.0, 1.0);
+    return SquaredDistance(point, segmentStart + segment * projection);
+}
+
+fn IsCoveredByPolyline(pixelCenter: vec2f, pointOffset: u32, pointCount: u32, strokeThickness: f32) -> bool {
+    if (pointCount < 2u) {
+        return false;
+    }
+
+    let halfThickness = strokeThickness * 0.5;
+    let coverageDistanceSquared = halfThickness * halfThickness;
+    var segmentIndex = 1u;
+    loop {
+        if (segmentIndex >= pointCount) {
+            break;
+        }
+
+        let segmentStart = polylinePoints[pointOffset + segmentIndex - 1u];
+        let segmentEnd = polylinePoints[pointOffset + segmentIndex];
+        if (SquaredDistanceToSegment(pixelCenter, segmentStart, segmentEnd) <= coverageDistanceSquared) {
+            return true;
+        }
+
+        segmentIndex = segmentIndex + 1u;
+    }
+
+    return false;
+}
+
+@fragment
+fn FragmentMain(input: VertexOutput, @builtin(position) fragmentPosition: vec4f) -> @location(0) vec4f {
+    // WebGPU fragment positions are framebuffer pixel-center coordinates.
+    let pixelCenter = fragmentPosition.xy;
+    var isCovered = false;
+
+    if (input.primitiveKind == 0u) {
+        let halfThickness = input.thicknessOrRadius * 0.5;
+        isCovered = SquaredDistanceToSegment(pixelCenter, input.firstPoint, input.secondPoint) <=
+            halfThickness * halfThickness;
+    } else if (input.primitiveKind == 1u) {
+        isCovered = IsCoveredByPolyline(pixelCenter, input.pointOffset, input.pointCount, input.thicknessOrRadius);
+    } else if (input.primitiveKind == 2u) {
+        isCovered = SquaredDistance(pixelCenter, input.firstPoint) <=
+            input.thicknessOrRadius * input.thicknessOrRadius;
+    }
+
+    if (!isCovered || input.color.a <= 0.0) {
+        discard;
+    }
+
+    return input.color;
+}
+)";
+}
+
 float ConvertPixelXToClipSpace(float pixelX, std::uint32_t surfaceWidth)
 {
     return (pixelX / static_cast<float>(surfaceWidth)) * 2.0f - 1.0f;
@@ -234,12 +343,17 @@ WebGpuRenderer::WebGpuRenderer(WebGpuContext& context, std::string defaultFontPa
 
 void WebGpuRenderer::BeginFrame()
 {
-    _submittedCommands.Clear();
+    _submissionQueue.Clear();
 }
 
 void WebGpuRenderer::Submit(const RenderCommandList& renderCommands)
 {
-    _submittedCommands.Append(renderCommands);
+    _submissionQueue.QueueRenderCommands(renderCommands);
+}
+
+void WebGpuRenderer::SubmitVisualization(const VisualizationCommandList& visualizationCommands)
+{
+    _submissionQueue.QueueVisualizationCommands(visualizationCommands);
 }
 
 void WebGpuRenderer::EndFrame()
@@ -284,6 +398,9 @@ void WebGpuRenderer::EndFrame()
     wgpu::CommandBuffer commandBuffer = commandEncoder.Finish();
     _context->GetQueue().Submit(1, &commandBuffer);
     _context->GetSurface().Present();
+
+    _completedFrameCommandCount = _submissionQueue.SubmittedRenderCommandCount();
+    _completedFrameVisualizationCommandCount = _submissionQueue.SubmittedVisualizationCommandCount();
 }
 
 void WebGpuRenderer::SetDefaultFontPath(std::string fontPath)
@@ -299,7 +416,22 @@ void WebGpuRenderer::SetDefaultFontPath(std::string fontPath)
 
 std::size_t WebGpuRenderer::SubmittedCommandCount() const noexcept
 {
-    return _submittedCommands.Size();
+    return _submissionQueue.SubmittedRenderCommandCount();
+}
+
+std::size_t WebGpuRenderer::CompletedFrameCommandCount() const noexcept
+{
+    return _completedFrameCommandCount;
+}
+
+std::size_t WebGpuRenderer::SubmittedVisualizationCommandCount() const noexcept
+{
+    return _submissionQueue.SubmittedVisualizationCommandCount();
+}
+
+std::size_t WebGpuRenderer::CompletedFrameVisualizationCommandCount() const noexcept
+{
+    return _completedFrameVisualizationCommandCount;
 }
 
 void WebGpuRenderer::EnsureRectanglePipeline()
@@ -525,6 +657,136 @@ void WebGpuRenderer::EnsureTextPipeline()
     _textPipelineFormat = surfaceFormat;
 }
 
+void WebGpuRenderer::EnsureVisualizationPipeline()
+{
+    const wgpu::TextureFormat surfaceFormat = _context->GetSurfaceFormat();
+    if (_visualizationPipeline != nullptr && _visualizationPipelineFormat == surfaceFormat)
+    {
+        return;
+    }
+
+    const wgpu::BindGroupLayoutEntry bindGroupLayoutEntry{
+        .binding = 0,
+        .visibility = wgpu::ShaderStage::Fragment,
+        .buffer = wgpu::BufferBindingLayout{.type = wgpu::BufferBindingType::ReadOnlyStorage},
+    };
+
+    const wgpu::BindGroupLayoutDescriptor bindGroupLayoutDescriptor{
+        .label = "Visualization bind group layout",
+        .entryCount = 1,
+        .entries = &bindGroupLayoutEntry,
+    };
+    _visualizationBindGroupLayout = _context->GetDevice().CreateBindGroupLayout(&bindGroupLayoutDescriptor);
+    _visualizationBindGroup = nullptr;
+
+    const wgpu::PipelineLayoutDescriptor pipelineLayoutDescriptor{
+        .label = "Visualization pipeline layout",
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = &_visualizationBindGroupLayout,
+    };
+    wgpu::PipelineLayout pipelineLayout = _context->GetDevice().CreatePipelineLayout(&pipelineLayoutDescriptor);
+
+    wgpu::ShaderSourceWGSL shaderSource{};
+    shaderSource.code = GetVisualizationShaderSource();
+
+    const wgpu::ShaderModuleDescriptor shaderModuleDescriptor{
+        .nextInChain = &shaderSource,
+        .label = "Visualization shader",
+    };
+    wgpu::ShaderModule shaderModule = _context->GetDevice().CreateShaderModule(&shaderModuleDescriptor);
+
+    const std::array<wgpu::VertexAttribute, 8> vertexAttributes{{
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x2,
+            .offset = offsetof(VisualizationVertex, position),
+            .shaderLocation = 0,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x4,
+            .offset = offsetof(VisualizationVertex, color),
+            .shaderLocation = 1,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x2,
+            .offset = offsetof(VisualizationVertex, firstPoint),
+            .shaderLocation = 2,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32x2,
+            .offset = offsetof(VisualizationVertex, secondPoint),
+            .shaderLocation = 3,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Float32,
+            .offset = offsetof(VisualizationVertex, thicknessOrRadius),
+            .shaderLocation = 4,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Uint32,
+            .offset = offsetof(VisualizationVertex, primitiveKind),
+            .shaderLocation = 5,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Uint32,
+            .offset = offsetof(VisualizationVertex, pointOffset),
+            .shaderLocation = 6,
+        },
+        wgpu::VertexAttribute{
+            .format = wgpu::VertexFormat::Uint32,
+            .offset = offsetof(VisualizationVertex, pointCount),
+            .shaderLocation = 7,
+        },
+    }};
+
+    const wgpu::VertexBufferLayout vertexBufferLayout{
+        .stepMode = wgpu::VertexStepMode::Vertex,
+        .arrayStride = sizeof(VisualizationVertex),
+        .attributeCount = vertexAttributes.size(),
+        .attributes = vertexAttributes.data(),
+    };
+
+    const wgpu::BlendState blendState{
+        .color =
+            wgpu::BlendComponent{
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::SrcAlpha,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+            },
+        .alpha =
+            wgpu::BlendComponent{
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::One,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
+            },
+    };
+
+    const wgpu::ColorTargetState colorTargetState{
+        .format = surfaceFormat,
+        .blend = &blendState,
+        .writeMask = wgpu::ColorWriteMask::All,
+    };
+
+    const wgpu::FragmentState fragmentState{
+        .module = shaderModule,
+        .entryPoint = "FragmentMain",
+        .targetCount = 1,
+        .targets = &colorTargetState,
+    };
+
+    wgpu::RenderPipelineDescriptor pipelineDescriptor{};
+    pipelineDescriptor.label = "Visualization render pipeline";
+    pipelineDescriptor.layout = pipelineLayout;
+    pipelineDescriptor.vertex.module = shaderModule;
+    pipelineDescriptor.vertex.entryPoint = "VertexMain";
+    pipelineDescriptor.vertex.bufferCount = 1;
+    pipelineDescriptor.vertex.buffers = &vertexBufferLayout;
+    pipelineDescriptor.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
+    pipelineDescriptor.fragment = &fragmentState;
+
+    _visualizationPipeline = _context->GetDevice().CreateRenderPipeline(&pipelineDescriptor);
+    _visualizationPipelineFormat = surfaceFormat;
+}
+
 WebGpuRenderer::FontAtlas* WebGpuRenderer::GetOrCreateFontAtlas(float fontSize)
 {
     if (_defaultFontPath.empty())
@@ -710,6 +972,28 @@ WebGpuRenderer::TextVertex WebGpuRenderer::MakeTextVertex(float pixelPositionX, 
     };
 }
 
+WebGpuRenderer::VisualizationVertex WebGpuRenderer::MakeVisualizationVertex(
+    float pixelPositionX,
+    float pixelPositionY,
+    const WebGpuPreparedVisualizationPrimitive& primitive,
+    std::uint32_t pointOffset) const noexcept
+{
+    return VisualizationVertex{
+        .position =
+            {
+                ConvertPixelXToClipSpace(pixelPositionX, _context->GetSurfaceWidth()),
+                ConvertPixelYToClipSpace(pixelPositionY, _context->GetSurfaceHeight()),
+            },
+        .color = {primitive.color.red, primitive.color.green, primitive.color.blue, primitive.color.alpha},
+        .firstPoint = {primitive.firstPoint.x, primitive.firstPoint.y},
+        .secondPoint = {primitive.secondPoint.x, primitive.secondPoint.y},
+        .thicknessOrRadius = primitive.thicknessOrRadius,
+        .primitiveKind = static_cast<std::uint32_t>(primitive.kind),
+        .pointOffset = pointOffset,
+        .pointCount = primitive.pointCount,
+    };
+}
+
 void WebGpuRenderer::AppendTextVertices(const RenderCommand& renderCommand, const FontAtlas& fontAtlas)
 {
     if (_context->GetSurfaceWidth() == 0 || _context->GetSurfaceHeight() == 0 || renderCommand.text.empty())
@@ -791,15 +1075,77 @@ void WebGpuRenderer::EnsureTextVertexBuffer(std::size_t requiredSize)
     _textVertexBufferSize = requiredSize;
 }
 
+void WebGpuRenderer::EnsureVisualizationVertexBuffer(std::size_t requiredSize)
+{
+    if (requiredSize == 0 || _visualizationVertexBufferSize >= requiredSize)
+    {
+        return;
+    }
+
+    const wgpu::BufferDescriptor bufferDescriptor{
+        .label = "Visualization vertex buffer",
+        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
+        .size = requiredSize,
+    };
+
+    _visualizationVertexBuffer = _context->GetDevice().CreateBuffer(&bufferDescriptor);
+    _visualizationVertexBufferSize = requiredSize;
+}
+
+void WebGpuRenderer::EnsureVisualizationPointBuffer(std::size_t requiredSize)
+{
+    const std::size_t storageSize = std::max(requiredSize, sizeof(Vec2));
+    if (_visualizationPointBufferSize >= storageSize)
+    {
+        return;
+    }
+
+    const wgpu::BufferDescriptor bufferDescriptor{
+        .label = "Visualization polyline point buffer",
+        .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Storage,
+        .size = storageSize,
+    };
+
+    _visualizationPointBuffer = _context->GetDevice().CreateBuffer(&bufferDescriptor);
+    _visualizationPointBufferSize = storageSize;
+    _visualizationBindGroup = nullptr;
+}
+
+void WebGpuRenderer::EnsureVisualizationBindGroup()
+{
+    if (_visualizationBindGroup != nullptr)
+    {
+        return;
+    }
+
+    EnsureVisualizationPipeline();
+    EnsureVisualizationPointBuffer(0);
+
+    const wgpu::BindGroupEntry bindGroupEntry{
+        .binding = 0,
+        .buffer = _visualizationPointBuffer,
+        .offset = 0,
+        .size = _visualizationPointBufferSize,
+    };
+
+    const wgpu::BindGroupDescriptor bindGroupDescriptor{
+        .label = "Visualization bind group",
+        .layout = _visualizationBindGroupLayout,
+        .entryCount = 1,
+        .entries = &bindGroupEntry,
+    };
+    _visualizationBindGroup = _context->GetDevice().CreateBindGroup(&bindGroupDescriptor);
+}
+
 void WebGpuRenderer::DrawRenderCommands(wgpu::RenderPassEncoder& renderPass)
 {
     BuildRenderBatches();
     WritePreparedVertexBuffers();
 
     ApplyFullFrameScissor(renderPass);
-    for (const DrawBatch& drawBatch : _drawBatches)
+    for (const QueuedDrawOperation& queuedDrawOperation : _queuedDrawOperations)
     {
-        DrawPreparedBatch(renderPass, drawBatch);
+        DrawQueuedOperation(renderPass, queuedDrawOperation);
     }
 }
 
@@ -808,9 +1154,33 @@ void WebGpuRenderer::BuildRenderBatches()
     std::vector<Rect> clipRectangles;
     _rectangleVertices.clear();
     _textVertices.clear();
+    _visualizationVertices.clear();
+    _visualizationPoints.clear();
     _drawBatches.clear();
+    _visualizationDrawBatches.clear();
+    _queuedDrawOperations.clear();
 
-    for (const RenderCommand& renderCommand : _submittedCommands.Commands())
+    for (const WebGpuQueuedSubmission& queuedSubmission : _submissionQueue.Submissions())
+    {
+        if (const WebGpuQueuedRenderSubmission* renderSubmission =
+                std::get_if<WebGpuQueuedRenderSubmission>(&queuedSubmission))
+        {
+            BuildRenderCommandBatches(std::span<const RenderCommand>(renderSubmission->commands), clipRectangles);
+            continue;
+        }
+
+        if (const WebGpuQueuedVisualizationSubmission* visualizationSubmission =
+                std::get_if<WebGpuQueuedVisualizationSubmission>(&queuedSubmission))
+        {
+            BuildVisualizationBatches(*visualizationSubmission);
+        }
+    }
+}
+
+void WebGpuRenderer::BuildRenderCommandBatches(std::span<const RenderCommand> renderCommands,
+                                               std::vector<Rect>& clipRectangles)
+{
+    for (const RenderCommand& renderCommand : renderCommands)
     {
         if (renderCommand.type == RenderCommandType::PushClip)
         {
@@ -853,6 +1223,7 @@ void WebGpuRenderer::BuildRenderBatches()
                 .firstVertex = firstVertex,
                 .vertexCount = vertexCount,
             });
+            _queuedDrawOperations.push_back(QueuedDrawBatch{.index = _drawBatches.size() - 1U});
         }
         else if (renderCommand.type == RenderCommandType::DrawText)
         {
@@ -878,7 +1249,42 @@ void WebGpuRenderer::BuildRenderBatches()
                 .firstVertex = firstVertex,
                 .vertexCount = vertexCount,
             });
+            _queuedDrawOperations.push_back(QueuedDrawBatch{.index = _drawBatches.size() - 1U});
         }
+    }
+}
+
+void WebGpuRenderer::BuildVisualizationBatches(const WebGpuQueuedVisualizationSubmission& visualizationSubmission)
+{
+    const WebGpuPreparedVisualizationSubmission preparedSubmission =
+        PrepareWebGpuVisualizationSubmission(visualizationSubmission,
+                                             _context->GetSurfaceWidth(),
+                                             _context->GetSurfaceHeight());
+
+    if (preparedSubmission.scissorRectangle.width == 0 || preparedSubmission.scissorRectangle.height == 0)
+    {
+        return;
+    }
+
+    if (_visualizationPoints.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
+    {
+        throw std::runtime_error("WebGPU visualization frame point storage exceeded 32-bit shader indexing.");
+    }
+
+    const std::uint32_t basePointOffset = static_cast<std::uint32_t>(_visualizationPoints.size());
+    _visualizationPoints.insert(_visualizationPoints.end(),
+                                preparedSubmission.polylinePoints.begin(),
+                                preparedSubmission.polylinePoints.end());
+    if (_visualizationPoints.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
+    {
+        throw std::runtime_error("WebGPU visualization frame point storage exceeded 32-bit shader indexing.");
+    }
+
+    for (const WebGpuPreparedVisualizationPrimitive& primitive : preparedSubmission.primitives)
+    {
+        AppendVisualizationVertices(primitive,
+                                    preparedSubmission.scissorRectangle,
+                                    basePointOffset + primitive.pointOffset);
     }
 }
 
@@ -914,6 +1320,45 @@ void WebGpuRenderer::AppendRectangleVertices(const RenderCommand& renderCommand)
     _rectangleVertices.push_back(bottomRight);
 }
 
+void WebGpuRenderer::AppendVisualizationVertices(const WebGpuPreparedVisualizationPrimitive& primitive,
+                                                 const WebGpuScissorRectangle& scissorRectangle,
+                                                 std::uint32_t pointOffset)
+{
+    if (_context->GetSurfaceWidth() == 0 || _context->GetSurfaceHeight() == 0 ||
+        !HasPositiveArea(primitive.coverageBounds))
+    {
+        return;
+    }
+
+    // Visualization commands are already screen-space; these triangles only cover
+    // the expanded primitive bounds while the fragment shader applies pixel-center coverage.
+    const Rect& bounds = primitive.coverageBounds;
+    const float left = bounds.position.x;
+    const float top = bounds.position.y;
+    const float right = bounds.position.x + bounds.size.x;
+    const float bottom = bounds.position.y + bounds.size.y;
+
+    const auto firstVertex = static_cast<std::uint32_t>(_visualizationVertices.size());
+    const VisualizationVertex topLeft = MakeVisualizationVertex(left, top, primitive, pointOffset);
+    const VisualizationVertex topRight = MakeVisualizationVertex(right, top, primitive, pointOffset);
+    const VisualizationVertex bottomLeft = MakeVisualizationVertex(left, bottom, primitive, pointOffset);
+    const VisualizationVertex bottomRight = MakeVisualizationVertex(right, bottom, primitive, pointOffset);
+
+    _visualizationVertices.push_back(topLeft);
+    _visualizationVertices.push_back(bottomLeft);
+    _visualizationVertices.push_back(topRight);
+    _visualizationVertices.push_back(topRight);
+    _visualizationVertices.push_back(bottomLeft);
+    _visualizationVertices.push_back(bottomRight);
+
+    _visualizationDrawBatches.push_back(VisualizationDrawBatch{
+        .scissorRectangle = scissorRectangle,
+        .firstVertex = firstVertex,
+        .vertexCount = 6,
+    });
+    _queuedDrawOperations.push_back(QueuedVisualizationDrawBatch{.index = _visualizationDrawBatches.size() - 1U});
+}
+
 void WebGpuRenderer::WritePreparedVertexBuffers()
 {
     if (!_rectangleVertices.empty())
@@ -934,6 +1379,51 @@ void WebGpuRenderer::WritePreparedVertexBuffers()
         EnsureTextVertexBuffer(vertexDataSize);
 
         _context->GetQueue().WriteBuffer(_textVertexBuffer, 0, _textVertices.data(), vertexDataSize);
+    }
+
+    if (!_visualizationVertices.empty())
+    {
+        EnsureVisualizationPipeline();
+
+        const std::size_t vertexDataSize = _visualizationVertices.size() * sizeof(VisualizationVertex);
+        EnsureVisualizationVertexBuffer(vertexDataSize);
+
+        _context->GetQueue().WriteBuffer(_visualizationVertexBuffer,
+                                         0,
+                                         _visualizationVertices.data(),
+                                         vertexDataSize);
+        WriteVisualizationPointBuffer();
+        EnsureVisualizationBindGroup();
+    }
+}
+
+void WebGpuRenderer::WriteVisualizationPointBuffer()
+{
+    const std::size_t pointDataSize = _visualizationPoints.size() * sizeof(Vec2);
+    EnsureVisualizationPointBuffer(pointDataSize);
+
+    if (!_visualizationPoints.empty())
+    {
+        _context->GetQueue().WriteBuffer(_visualizationPointBuffer,
+                                         0,
+                                         _visualizationPoints.data(),
+                                         pointDataSize);
+    }
+}
+
+void WebGpuRenderer::DrawQueuedOperation(wgpu::RenderPassEncoder& renderPass,
+                                         const QueuedDrawOperation& queuedDrawOperation)
+{
+    if (const QueuedDrawBatch* drawBatch = std::get_if<QueuedDrawBatch>(&queuedDrawOperation))
+    {
+        DrawPreparedBatch(renderPass, _drawBatches[drawBatch->index]);
+        return;
+    }
+
+    if (const QueuedVisualizationDrawBatch* visualizationDrawBatch =
+            std::get_if<QueuedVisualizationDrawBatch>(&queuedDrawOperation))
+    {
+        DrawPreparedVisualizationBatch(renderPass, _visualizationDrawBatches[visualizationDrawBatch->index]);
     }
 }
 
@@ -971,6 +1461,22 @@ void WebGpuRenderer::DrawPreparedBatch(wgpu::RenderPassEncoder& renderPass, cons
     }
 }
 
+void WebGpuRenderer::DrawPreparedVisualizationBatch(wgpu::RenderPassEncoder& renderPass,
+                                                    const VisualizationDrawBatch& visualizationDrawBatch)
+{
+    ApplyVisualizationScissor(renderPass, visualizationDrawBatch.scissorRectangle);
+
+    const std::uint64_t vertexBufferOffset =
+        static_cast<std::uint64_t>(visualizationDrawBatch.firstVertex) * sizeof(VisualizationVertex);
+    const std::uint64_t vertexBufferSize =
+        static_cast<std::uint64_t>(visualizationDrawBatch.vertexCount) * sizeof(VisualizationVertex);
+
+    renderPass.SetPipeline(_visualizationPipeline);
+    renderPass.SetVertexBuffer(0, _visualizationVertexBuffer, vertexBufferOffset, vertexBufferSize);
+    renderPass.SetBindGroup(0, _visualizationBindGroup);
+    renderPass.Draw(visualizationDrawBatch.vertexCount);
+}
+
 void WebGpuRenderer::ApplyFullFrameScissor(wgpu::RenderPassEncoder& renderPass) const
 {
     renderPass.SetScissorRect(0, 0, _context->GetSurfaceWidth(), _context->GetSurfaceHeight());
@@ -980,6 +1486,15 @@ void WebGpuRenderer::ApplyClipScissor(wgpu::RenderPassEncoder& renderPass, const
 {
     const ScissorRectangle scissorRectangle = MakeScissorRectangle(clipRectangle);
     renderPass.SetScissorRect(scissorRectangle.x, scissorRectangle.y, scissorRectangle.width, scissorRectangle.height);
+}
+
+void WebGpuRenderer::ApplyVisualizationScissor(wgpu::RenderPassEncoder& renderPass,
+                                               const WebGpuScissorRectangle& scissorRectangle) const
+{
+    renderPass.SetScissorRect(scissorRectangle.x,
+                              scissorRectangle.y,
+                              scissorRectangle.width,
+                              scissorRectangle.height);
 }
 
 WebGpuRenderer::ScissorRectangle WebGpuRenderer::MakeScissorRectangle(const Rect& clipRectangle) const noexcept

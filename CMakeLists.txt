@@ -92,12 +92,14 @@ if(GREENFIELD_BUILD_DEVELOPER_PROFILE)
     add_library(greenfield_render_webgpu
         engine/render/webgpu/WebGpuContext.cpp
         engine/render/webgpu/WebGpuRenderer.cpp
+        engine/render/webgpu/WebGpuVisualizationSupport.cpp
     )
     add_library(greenfield_webgpu ALIAS greenfield_render_webgpu)
     target_include_directories(greenfield_render_webgpu PUBLIC "${PROJECT_SOURCE_DIR}")
     # The implemented WebGPU renderer currently owns Dawn/WebGPU and backend-local
     # FreeType text rendering; greenfield_ui and greenfield_render stay renderer-agnostic.
-    target_link_libraries(greenfield_render_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform dawn::webgpu_dawn Freetype::Freetype)
+    target_link_libraries(greenfield_render_webgpu PUBLIC greenfield_core greenfield_render greenfield_platform
+                                                   greenfield_visualization dawn::webgpu_dawn Freetype::Freetype)
     greenfield_enable_warnings(greenfield_render_webgpu)
 
     add_executable(greenfield_sandbox
@@ -188,5 +190,17 @@ if(BUILD_TESTING)
         target_link_libraries(greenfield_sdl_raster_presenter_tests PRIVATE greenfield_core greenfield_sdl_platform)
         greenfield_enable_warnings(greenfield_sdl_raster_presenter_tests)
         add_test(NAME greenfield_sdl_raster_presenter_tests COMMAND greenfield_sdl_raster_presenter_tests)
+    endif()
+
+    if(TARGET greenfield_render_webgpu)
+        add_executable(greenfield_webgpu_visualization_support_tests
+            tests/webgpu_visualization_support_tests.cpp
+        )
+        target_include_directories(greenfield_webgpu_visualization_support_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+        target_link_libraries(greenfield_webgpu_visualization_support_tests PRIVATE greenfield_core
+                                                                                    greenfield_render_webgpu)
+        greenfield_enable_warnings(greenfield_webgpu_visualization_support_tests)
+        add_test(NAME greenfield_webgpu_visualization_support_tests
+                 COMMAND greenfield_webgpu_visualization_support_tests)
     endif()
 endif()
