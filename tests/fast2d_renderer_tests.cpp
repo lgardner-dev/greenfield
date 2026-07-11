@@ -1530,6 +1530,73 @@ namespace
     return PixelMatches(renderer, 1U, 1U, uiColor);
 }
 
+[[nodiscard]] bool TestMixedWorkloadMatchesReferenceBuffer()
+{
+    using namespace greenfield;
+
+    const Color baseColor{0.0f, 0.0f, 1.0f, 1.0f};
+    const Color clippedFillColor{1.0f, 0.0f, 0.0f, 0.5f};
+    const Color clippedBlendColor{0.5f, 0.0f, 0.5f, 1.0f};
+    const Color lineColor{0.0f, 1.0f, 0.0f, 1.0f};
+    const Color overlayColor{1.0f, 1.0f, 0.0f, 1.0f};
+    Fast2DRenderer renderer{6U, 5U};
+    RenderCommandList renderCommands;
+    VisualizationCommandList visualizationCommands = MakeVisualizationCommandsWithClip(6U, 5U);
+    RenderCommandList overlayCommands;
+
+    renderCommands.AddFillRectangle(FullRasterClip(6U, 5U), baseColor);
+    renderCommands.PushClip(Rect{.position = Vec2{1.0f, 1.0f}, .size = Vec2{4.0f, 3.0f}});
+    renderCommands.AddFillRectangle(Rect{.position = Vec2{0.0f, 0.0f}, .size = Vec2{4.0f, 3.0f}},
+                                    clippedFillColor);
+    renderCommands.PopClip();
+    if (!visualizationCommands.AddLine(Vec2{0.5f, 2.5f}, Vec2{5.5f, 2.5f}, lineColor, 1.0f))
+    {
+        return false;
+    }
+    overlayCommands.AddFillRectangle(Rect{.position = Vec2{4.0f, 1.0f}, .size = Vec2{1.0f, 3.0f}}, overlayColor);
+
+    renderer.BeginFrame();
+    renderer.Submit(renderCommands);
+    renderer.SubmitVisualization(visualizationCommands);
+    renderer.Submit(overlayCommands);
+    renderer.EndFrame();
+
+    std::vector<Color> expectedPixels(30U, baseColor);
+    for (std::size_t y = 1U; y < 3U; ++y)
+    {
+        for (std::size_t x = 1U; x < 4U; ++x)
+        {
+            expectedPixels[y * 6U + x] = clippedBlendColor;
+        }
+    }
+
+    for (std::size_t x = 0U; x < 6U; ++x)
+    {
+        expectedPixels[2U * 6U + x] = lineColor;
+    }
+
+    for (std::size_t y = 1U; y < 4U; ++y)
+    {
+        expectedPixels[y * 6U + 4U] = overlayColor;
+    }
+
+    const auto rasterPixels = renderer.RasterPixels();
+    if (rasterPixels.size() != expectedPixels.size())
+    {
+        return false;
+    }
+
+    for (std::size_t pixelIndex = 0U; pixelIndex < expectedPixels.size(); ++pixelIndex)
+    {
+        if (!ColorsNearlyMatch(rasterPixels[pixelIndex], expectedPixels[pixelIndex]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 [[nodiscard]] bool TestVisualizationClipStateDoesNotLeak()
 {
     using namespace greenfield;
@@ -1662,6 +1729,7 @@ int main()
         !TestVisualizationSubmissionOrderIsPreserved() ||
         !TestUiThenVisualizationSubmissionOrderIsPreserved() ||
         !TestVisualizationThenUiSubmissionOrderIsPreserved() ||
+        !TestMixedWorkloadMatchesReferenceBuffer() ||
         !TestVisualizationClipStateDoesNotLeak() ||
         !TestBeginFrameClearsPendingVisualizationState() ||
         !TestVisualizationEmptyRasterTargetAndResizeAreSafe())
