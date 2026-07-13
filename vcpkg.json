@@ -6,10 +6,16 @@
       "name": "sdl3",
       "default-features": false,
       "features": [
+        "wayland",
         "x11"
       ]
     },
-    "dawn",
+    {
+      "name": "dawn",
+      "features": [
+        "wayland"
+      ]
+    },
     "freetype"
   ]
 }
