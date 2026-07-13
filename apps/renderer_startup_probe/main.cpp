@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -8,13 +9,16 @@
 #include <iomanip>
 #include <iostream>
 #include <latch>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <syncstream>
 #include <thread>
 #include <vector>
 
+#include <dawn/native/DawnNative.h>
 #include <dawn/webgpu_cpp.h>
 
 #include "engine/platform/SdlStartupPresenter.h"
@@ -30,6 +34,7 @@ enum class ProbeMode
     Hardware,
     SwiftShader,
     Race,
+    Inventory,
 };
 
 enum class CandidateKind
@@ -58,6 +63,20 @@ struct AdapterIdentity
     std::uint32_t deviceId{0};
     std::size_t featureCount{0};
     std::uint32_t maxTextureDimension2D{0};
+    std::uint32_t subgroupMinSize{0};
+    std::uint32_t subgroupMaxSize{0};
+};
+
+struct AdapterInventoryRecord
+{
+    std::size_t index{0};
+    dawn::native::Adapter nativeAdapter;
+    wgpu::Adapter adapter;
+    AdapterIdentity identity;
+    bool isSwiftShader{false};
+    bool isHardware{false};
+    int hardwareRank{-1};
+    std::string classificationReason;
 };
 
 struct CandidateTimings
@@ -83,6 +102,8 @@ struct CandidateResult
     std::string failureStage;
     std::string failureMessage;
     AdapterIdentity adapterIdentity;
+    std::size_t adapterIndex{std::numeric_limits<std::size_t>::max()};
+    std::string selectionReason;
     CandidateTimings timings;
     bool renderVerified{false};
     std::string renderVerificationMessage;
@@ -135,6 +156,23 @@ struct MapResult
         return static_cast<char>(std::tolower(character));
     });
     return value;
+}
+
+[[nodiscard]] std::string QuoteForMachineOutput(std::string_view value)
+{
+    std::string result;
+    result.reserve(value.size() + 2U);
+    result.push_back('"');
+    for (const char character : value)
+    {
+        if (character == '"' || character == '\\')
+        {
+            result.push_back('\\');
+        }
+        result.push_back(character);
+    }
+    result.push_back('"');
+    return result;
 }
 
 [[nodiscard]] std::string ToString(wgpu::BackendType backendType)
@@ -194,6 +232,8 @@ struct MapResult
         return "swiftshader";
     case ProbeMode::Race:
         return "race";
+    case ProbeMode::Inventory:
+        return "inventory";
     }
 
     return "race";
@@ -217,9 +257,73 @@ struct MapResult
            (identity.vendorId == 0x1AE0U && identity.deviceId == 0xC0DEU);
 }
 
-[[nodiscard]] bool IsHardwareAdapter(const AdapterIdentity& identity)
+[[nodiscard]] bool ContainsKnownSoftwareIdentity(const AdapterIdentity& identity)
 {
-    return identity.adapterType == "discrete" || identity.adapterType == "integrated";
+    const std::string combined =
+        ToLower(identity.vendor + " " + identity.architecture + " " + identity.device + " " + identity.description);
+    return combined.find("swiftshader") != std::string::npos || combined.find("lavapipe") != std::string::npos ||
+           combined.find("llvmpipe") != std::string::npos || combined.find("software rasterizer") != std::string::npos ||
+           combined.find("microsoft basic render") != std::string::npos || combined.find("warp") != std::string::npos;
+}
+
+[[nodiscard]] int HardwareRankFor(const AdapterIdentity& identity)
+{
+    if (identity.adapterType == "cpu" || ContainsKnownSoftwareIdentity(identity))
+    {
+        return -1;
+    }
+
+    if (identity.adapterType == "discrete")
+    {
+        return 300;
+    }
+
+    if (identity.adapterType == "integrated")
+    {
+        return 200;
+    }
+
+    if (identity.adapterType == "unknown")
+    {
+        return 100;
+    }
+
+    return -1;
+}
+
+[[nodiscard]] std::string ClassifyAdapter(const AdapterIdentity& identity, bool isSwiftShader, int hardwareRank)
+{
+    if (isSwiftShader)
+    {
+        return "swiftshader_identity_match";
+    }
+
+    if (identity.adapterType == "cpu")
+    {
+        return "cpu_adapter";
+    }
+
+    if (ContainsKnownSoftwareIdentity(identity))
+    {
+        return "known_software_identity";
+    }
+
+    if (hardwareRank == 300)
+    {
+        return "discrete_hardware";
+    }
+
+    if (hardwareRank == 200)
+    {
+        return "integrated_hardware";
+    }
+
+    if (hardwareRank == 100)
+    {
+        return "unknown_non_cpu_hardware";
+    }
+
+    return "unsupported_adapter";
 }
 
 [[nodiscard]] AdapterIdentity QueryAdapterIdentity(const wgpu::Adapter& adapter)
@@ -240,6 +344,8 @@ struct MapResult
         .adapterType = ToString(adapterInfo.adapterType),
         .vendorId = adapterInfo.vendorID,
         .deviceId = adapterInfo.deviceID,
+        .subgroupMinSize = adapterInfo.subgroupMinSize,
+        .subgroupMaxSize = adapterInfo.subgroupMaxSize,
     };
 
     wgpu::SupportedFeatures features{};
@@ -262,50 +368,136 @@ void MarkFailure(CandidateResult& result, std::string stage, std::string message
     result.failureMessage = std::move(message);
 }
 
+void PrintSelection(CandidateKind candidateKind, const AdapterInventoryRecord& selectedAdapter)
+{
+    const AdapterIdentity& identity = selectedAdapter.identity;
+    std::osyncstream(std::cout) << "PROBE_SELECTION"
+                                << " candidate=" << ToString(candidateKind)
+                                << " adapter_index=" << selectedAdapter.index
+                                << " reason=" << selectedAdapter.classificationReason
+                                << " backend=" << identity.backendType
+                                << " adapter_type=" << identity.adapterType
+                                << " vendor_id=" << identity.vendorId
+                                << " device_id=" << identity.deviceId
+                                << " name=" << QuoteForMachineOutput(identity.device)
+                                << " description=" << QuoteForMachineOutput(identity.description) << '\n';
+}
+
 [[nodiscard]] bool WaitForFuture(const wgpu::Instance& instance, const wgpu::Future& future, std::uint64_t timeoutNanoseconds)
 {
     return instance.WaitAny(future, timeoutNanoseconds) == wgpu::WaitStatus::Success;
 }
 
-[[nodiscard]] wgpu::Instance CreateProbeInstance()
+[[nodiscard]] wgpu::InstanceDescriptor MakeProbeInstanceDescriptor()
 {
     static constexpr auto TimedWaitAnyFeature = wgpu::InstanceFeatureName::TimedWaitAny;
-    const wgpu::InstanceDescriptor descriptor{
+    return wgpu::InstanceDescriptor{
         .requiredFeatureCount = 1,
         .requiredFeatures = &TimedWaitAnyFeature,
     };
-
-    return wgpu::CreateInstance(&descriptor);
 }
 
-[[nodiscard]] wgpu::RequestAdapterOptions MakeAdapterOptions(CandidateKind candidateKind)
+[[nodiscard]] wgpu::RequestAdapterOptions MakeVulkanEnumerationOptions()
 {
     wgpu::RequestAdapterOptions options{};
-    if (candidateKind == CandidateKind::Hardware)
-    {
-        options.powerPreference = wgpu::PowerPreference::HighPerformance;
-        options.forceFallbackAdapter = false;
-        return options;
-    }
-
-    options.forceFallbackAdapter = true;
     options.backendType = wgpu::BackendType::Vulkan;
     return options;
 }
 
-[[nodiscard]] std::string BuildAdapterRejectionMessage(CandidateKind candidateKind, const AdapterIdentity& identity)
+[[nodiscard]] std::vector<AdapterInventoryRecord> EnumerateVulkanAdapters(const dawn::native::Instance& nativeInstance)
 {
-    std::ostringstream stream;
-    if (candidateKind == CandidateKind::Hardware)
+    const wgpu::RequestAdapterOptions options = MakeVulkanEnumerationOptions();
+    const std::vector<dawn::native::Adapter> nativeAdapters = nativeInstance.EnumerateAdapters(&options);
+
+    std::vector<AdapterInventoryRecord> records;
+    records.reserve(nativeAdapters.size());
+    for (std::size_t index = 0; index < nativeAdapters.size(); ++index)
     {
-        stream << "Requested hardware, but Dawn returned adapter_type=" << identity.adapterType
-               << " backend=" << identity.backendType << " device=\"" << identity.device << "\".";
-        return stream.str();
+        wgpu::Adapter adapter{nativeAdapters[index].Get()};
+        AdapterIdentity identity = QueryAdapterIdentity(adapter);
+        const bool isSwiftShader = ContainsSwiftShaderIdentity(identity);
+        const int hardwareRank = HardwareRankFor(identity);
+
+        records.push_back(AdapterInventoryRecord{
+            .index = index,
+            .nativeAdapter = nativeAdapters[index],
+            .adapter = std::move(adapter),
+            .identity = std::move(identity),
+            .isSwiftShader = isSwiftShader,
+            .isHardware = hardwareRank >= 0,
+            .hardwareRank = hardwareRank,
+            .classificationReason = {},
+        });
+        records.back().classificationReason =
+            ClassifyAdapter(records.back().identity, records.back().isSwiftShader, records.back().hardwareRank);
     }
 
-    stream << "Requested SwiftShader fallback, but identity did not prove SwiftShader: vendor=\"" << identity.vendor
-           << "\" device=\"" << identity.device << "\" description=\"" << identity.description << "\" vendor_id=0x"
-           << std::hex << identity.vendorId << " device_id=0x" << identity.deviceId << std::dec << ".";
+    return records;
+}
+
+[[nodiscard]] bool HardwareRecordComesBefore(const AdapterInventoryRecord& left, const AdapterInventoryRecord& right)
+{
+    if (left.hardwareRank != right.hardwareRank)
+    {
+        return left.hardwareRank > right.hardwareRank;
+    }
+
+    if (left.identity.maxTextureDimension2D != right.identity.maxTextureDimension2D)
+    {
+        return left.identity.maxTextureDimension2D > right.identity.maxTextureDimension2D;
+    }
+
+    if (left.identity.vendorId != right.identity.vendorId)
+    {
+        return left.identity.vendorId < right.identity.vendorId;
+    }
+
+    if (left.identity.deviceId != right.identity.deviceId)
+    {
+        return left.identity.deviceId < right.identity.deviceId;
+    }
+
+    return left.index < right.index;
+}
+
+[[nodiscard]] std::optional<std::size_t> SelectHardwareAdapterIndex(const std::vector<AdapterInventoryRecord>& records)
+{
+    std::optional<std::size_t> selectedIndex;
+    for (std::size_t index = 0; index < records.size(); ++index)
+    {
+        if (!records[index].isHardware)
+        {
+            continue;
+        }
+
+        if (!selectedIndex.has_value() || HardwareRecordComesBefore(records[index], records[*selectedIndex]))
+        {
+            selectedIndex = index;
+        }
+    }
+
+    return selectedIndex;
+}
+
+[[nodiscard]] std::optional<std::size_t> SelectSwiftShaderAdapterIndex(const std::vector<AdapterInventoryRecord>& records)
+{
+    for (std::size_t index = 0; index < records.size(); ++index)
+    {
+        if (records[index].isSwiftShader)
+        {
+            return index;
+        }
+    }
+
+    return std::nullopt;
+}
+
+[[nodiscard]] std::string BuildSelectionFailureMessage(CandidateKind candidateKind,
+                                                       const std::vector<AdapterInventoryRecord>& records)
+{
+    std::ostringstream stream;
+    stream << "Enumerated " << records.size() << " Vulkan adapter(s), but no "
+           << (candidateKind == CandidateKind::Hardware ? "hardware" : "SwiftShader") << " adapter matched.";
     return stream.str();
 }
 
@@ -554,7 +746,9 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
 
     try
     {
-        wgpu::Instance instance = CreateProbeInstance();
+        const wgpu::InstanceDescriptor instanceDescriptor = MakeProbeInstanceDescriptor();
+        dawn::native::Instance nativeInstance{&instanceDescriptor};
+        wgpu::Instance instance{nativeInstance.Get()};
         if (instance == nullptr)
         {
             MarkFailure(result, "instance", "Failed to create WebGPU instance.");
@@ -562,47 +756,32 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
         }
         result.timings.instanceCreatedMilliseconds = MillisecondsSince(epoch, Clock::now());
 
-        const auto adapterRequestStart = Clock::now();
-        RequestAdapterResult adapterRequestResult{};
-        const wgpu::RequestAdapterOptions adapterOptions = MakeAdapterOptions(candidateKind);
-        auto adapterCallback =
-            [&adapterRequestResult](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message) {
-                adapterRequestResult.status = status;
-                adapterRequestResult.adapter = adapter;
-                adapterRequestResult.message = ToString(message);
-            };
-
-        const wgpu::Future adapterFuture =
-            instance.RequestAdapter(&adapterOptions, wgpu::CallbackMode::WaitAnyOnly, adapterCallback);
-        if (!WaitForFuture(instance, adapterFuture, TimeoutNanoseconds(options)))
-        {
-            MarkFailure(result, "adapter", "Timed out while requesting adapter.");
-            return result;
-        }
+        const auto adapterSelectionStart = Clock::now();
+        std::vector<AdapterInventoryRecord> adapterRecords = EnumerateVulkanAdapters(nativeInstance);
+        const std::optional<std::size_t> selectedAdapterIndex =
+            candidateKind == CandidateKind::Hardware ? SelectHardwareAdapterIndex(adapterRecords)
+                                                     : SelectSwiftShaderAdapterIndex(adapterRecords);
         result.timings.adapterRequestedMilliseconds =
-            std::chrono::duration<double, std::milli>(Clock::now() - adapterRequestStart).count();
+            std::chrono::duration<double, std::milli>(Clock::now() - adapterSelectionStart).count();
 
-        if (adapterRequestResult.status != wgpu::RequestAdapterStatus::Success ||
-            adapterRequestResult.adapter == nullptr)
+        if (!selectedAdapterIndex.has_value())
         {
-            MarkFailure(result, "adapter", "Adapter request failed: " + adapterRequestResult.message);
+            MarkFailure(result, "adapter_selection", BuildSelectionFailureMessage(candidateKind, adapterRecords));
             return result;
         }
 
-        result.adapterIdentity = QueryAdapterIdentity(adapterRequestResult.adapter);
+        const AdapterInventoryRecord& selectedAdapter = adapterRecords[*selectedAdapterIndex];
+        if (selectedAdapter.adapter == nullptr)
+        {
+            MarkFailure(result, "adapter_selection", "Selected adapter record carried a null adapter.");
+            return result;
+        }
+
+        result.adapterIdentity = selectedAdapter.identity;
+        result.adapterIndex = selectedAdapter.index;
+        result.selectionReason = selectedAdapter.classificationReason;
         result.timings.adapterInfoQueriedMilliseconds = MillisecondsSince(epoch, Clock::now());
-
-        if (candidateKind == CandidateKind::Hardware && !IsHardwareAdapter(result.adapterIdentity))
-        {
-            MarkFailure(result, "adapter_identity", BuildAdapterRejectionMessage(candidateKind, result.adapterIdentity));
-            return result;
-        }
-
-        if (candidateKind == CandidateKind::SwiftShader && !ContainsSwiftShaderIdentity(result.adapterIdentity))
-        {
-            MarkFailure(result, "adapter_identity", BuildAdapterRejectionMessage(candidateKind, result.adapterIdentity));
-            return result;
-        }
+        PrintSelection(candidateKind, selectedAdapter);
 
         wgpu::DeviceDescriptor deviceDescriptor{};
         deviceDescriptor.SetDeviceLostCallback(
@@ -628,7 +807,7 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
             };
 
         const wgpu::Future deviceFuture =
-            adapterRequestResult.adapter.RequestDevice(&deviceDescriptor, wgpu::CallbackMode::WaitAnyOnly, deviceCallback);
+            selectedAdapter.adapter.RequestDevice(&deviceDescriptor, wgpu::CallbackMode::WaitAnyOnly, deviceCallback);
         if (!WaitForFuture(instance, deviceFuture, TimeoutNanoseconds(options)))
         {
             MarkFailure(result, "device", "Timed out while requesting device.");
@@ -757,6 +936,11 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
         return {CandidateKind::SwiftShader};
     }
 
+    if (mode == ProbeMode::Inventory)
+    {
+        return {};
+    }
+
     return {CandidateKind::Hardware, CandidateKind::SwiftShader};
 }
 
@@ -775,6 +959,11 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
     if (value == "race")
     {
         return ProbeMode::Race;
+    }
+
+    if (value == "inventory")
+    {
+        return ProbeMode::Inventory;
     }
 
     return std::nullopt;
@@ -804,7 +993,7 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
             std::optional<ProbeMode> parsedMode = ParseMode(argument.substr(7));
             if (!parsedMode.has_value())
             {
-                throw std::invalid_argument("Expected --mode=hardware, --mode=swiftshader, or --mode=race.");
+                throw std::invalid_argument("Expected --mode=hardware, --mode=swiftshader, --mode=race, or --mode=inventory.");
             }
             options.mode = *parsedMode;
         }
@@ -832,7 +1021,17 @@ void PrintHumanResult(const CandidateResult& result)
 {
     std::cout << "Candidate " << ToString(result.candidateKind) << ": " << (result.success ? "ready" : "failed")
               << '\n';
-    std::cout << "  adapter: backend=" << result.adapterIdentity.backendType
+    std::cout << "  adapter: index=";
+    if (result.adapterIndex == std::numeric_limits<std::size_t>::max())
+    {
+        std::cout << "none";
+    }
+    else
+    {
+        std::cout << result.adapterIndex;
+    }
+    std::cout << " selection_reason=" << (result.selectionReason.empty() ? "none" : result.selectionReason)
+              << " backend=" << result.adapterIdentity.backendType
               << " type=" << result.adapterIdentity.adapterType << " vendor=\"" << result.adapterIdentity.vendor
               << "\" device=\"" << result.adapterIdentity.device << "\" description=\""
               << result.adapterIdentity.description << "\" vendor_id=0x" << std::hex << result.adapterIdentity.vendorId
@@ -859,19 +1058,75 @@ void PrintMachineResult(ProbeMode mode, const CandidateResult& result)
               << " candidate=" << ToString(result.candidateKind)
               << " success=" << (result.success ? "true" : "false")
               << " failure_stage=" << (result.failureStage.empty() ? "none" : result.failureStage)
+              << " adapter_index=";
+    if (result.adapterIndex == std::numeric_limits<std::size_t>::max())
+    {
+        std::cout << "none";
+    }
+    else
+    {
+        std::cout << result.adapterIndex;
+    }
+    std::cout << " selection_reason=" << (result.selectionReason.empty() ? "none" : result.selectionReason)
               << " backend=" << result.adapterIdentity.backendType
               << " adapter_type=" << result.adapterIdentity.adapterType
               << " vendor_id=" << result.adapterIdentity.vendorId
               << " device_id=" << result.adapterIdentity.deviceId
               << " feature_count=" << result.adapterIdentity.featureCount
               << " max_texture_2d=" << result.adapterIdentity.maxTextureDimension2D
+              << " instance_created_ms=" << result.timings.instanceCreatedMilliseconds
               << " adapter_request_ms=" << result.timings.adapterRequestedMilliseconds
+              << " adapter_info_ms=" << result.timings.adapterInfoQueriedMilliseconds
               << " device_request_ms=" << result.timings.deviceRequestedMilliseconds
+              << " queue_acquired_ms=" << result.timings.queueAcquiredMilliseconds
+              << " shader_ready_ms=" << result.timings.shaderModuleCreatedMilliseconds
               << " pipeline_ready_ms=" << result.timings.pipelineCreatedMilliseconds
+              << " resources_ready_ms=" << result.timings.resourcesCreatedMilliseconds
+              << " command_encoded_ms=" << result.timings.commandEncodedMilliseconds
               << " preliminary_ready_ms=" << result.timings.firstQueueSubmittedMilliseconds
               << " queue_complete_ms=" << result.timings.queueCompletedMilliseconds
               << " readback_complete_ms=" << result.timings.readbackCompletedMilliseconds
               << " render_verified=" << (result.renderVerified ? "true" : "false") << '\n';
+}
+
+void PrintAdapterInventoryRecord(const AdapterInventoryRecord& record)
+{
+    const AdapterIdentity& identity = record.identity;
+    std::cout << "PROBE_ADAPTER"
+              << " index=" << record.index
+              << " backend=" << identity.backendType
+              << " type=" << identity.adapterType
+              << " vendor_id=" << identity.vendorId
+              << " device_id=" << identity.deviceId
+              << " vendor=" << QuoteForMachineOutput(identity.vendor)
+              << " architecture=" << QuoteForMachineOutput(identity.architecture)
+              << " name=" << QuoteForMachineOutput(identity.device)
+              << " description=" << QuoteForMachineOutput(identity.description)
+              << " feature_count=" << identity.featureCount
+              << " max_texture_2d=" << identity.maxTextureDimension2D
+              << " subgroup_min=" << identity.subgroupMinSize
+              << " subgroup_max=" << identity.subgroupMaxSize
+              << " swiftshader=" << (record.isSwiftShader ? "true" : "false")
+              << " hardware=" << (record.isHardware ? "true" : "false")
+              << " hardware_rank=" << record.hardwareRank
+              << " classification_reason=" << record.classificationReason << '\n';
+}
+
+int RunInventoryMode()
+{
+    const wgpu::InstanceDescriptor instanceDescriptor = MakeProbeInstanceDescriptor();
+    dawn::native::Instance nativeInstance{&instanceDescriptor};
+    const std::vector<AdapterInventoryRecord> adapterRecords = EnumerateVulkanAdapters(nativeInstance);
+
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "Greenfield renderer startup probe\n";
+    std::cout << "mode=inventory adapters=" << adapterRecords.size() << '\n';
+    for (const AdapterInventoryRecord& record : adapterRecords)
+    {
+        PrintAdapterInventoryRecord(record);
+    }
+
+    return adapterRecords.empty() ? 2 : 0;
 }
 
 void PrintStartupResult(ProbeMode mode, const StartupFrameResult& result)
@@ -923,6 +1178,39 @@ void PrintWinner(ProbeMode mode, const std::vector<CandidateResult>& results)
               << " margin_ms=" << marginMilliseconds << '\n';
 }
 
+[[nodiscard]] bool SameAdapterIdentity(const CandidateResult& left, const CandidateResult& right)
+{
+    return left.adapterIdentity.backendType == right.adapterIdentity.backendType &&
+           left.adapterIdentity.adapterType == right.adapterIdentity.adapterType &&
+           left.adapterIdentity.vendorId == right.adapterIdentity.vendorId &&
+           left.adapterIdentity.deviceId == right.adapterIdentity.deviceId &&
+           left.adapterIdentity.device == right.adapterIdentity.device &&
+           left.adapterIdentity.description == right.adapterIdentity.description;
+}
+
+[[nodiscard]] bool RaceUsedDistinctSuccessfulAdapters(const std::vector<CandidateResult>& results)
+{
+    if (results.size() != 2U || !results[0].success || !results[1].success)
+    {
+        return false;
+    }
+
+    return !SameAdapterIdentity(results[0], results[1]);
+}
+
+void PrintRaceAdapterCheck(ProbeMode mode, const std::vector<CandidateResult>& results)
+{
+    if (mode != ProbeMode::Race)
+    {
+        return;
+    }
+
+    std::cout << "PROBE_RACE_ADAPTERS"
+              << " mode=" << ToString(mode)
+              << " distinct_successful_adapters=" << (RaceUsedDistinctSuccessfulAdapters(results) ? "true" : "false")
+              << '\n';
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -930,6 +1218,11 @@ int main(int argc, char** argv)
     try
     {
         const ProbeOptions options = ParseOptions(argc, argv);
+        if (options.mode == ProbeMode::Inventory)
+        {
+            return RunInventoryMode();
+        }
+
         const std::vector<CandidateKind> candidateKinds = GetCandidatesForMode(options.mode);
         const Clock::time_point epoch = Clock::now();
 
@@ -978,10 +1271,13 @@ int main(int argc, char** argv)
             PrintMachineResult(options.mode, result);
         }
         PrintWinner(options.mode, results);
+        PrintRaceAdapterCheck(options.mode, results);
 
         const bool anyCandidateSucceeded =
             std::any_of(results.begin(), results.end(), [](const CandidateResult& result) { return result.success; });
-        return startupFrameResult.success && anyCandidateSucceeded ? 0 : 2;
+        const bool raceWasDistinct =
+            options.mode != ProbeMode::Race || RaceUsedDistinctSuccessfulAdapters(results);
+        return startupFrameResult.success && anyCandidateSucceeded && raceWasDistinct ? 0 : 2;
     }
     catch (const std::exception& exception)
     {
