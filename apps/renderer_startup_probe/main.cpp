@@ -16,11 +16,15 @@
 #include <string_view>
 #include <syncstream>
 #include <thread>
+#include <utility>
 #include <vector>
 
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_video.h>
 #include <dawn/native/DawnNative.h>
 #include <dawn/webgpu_cpp.h>
 
+#include "engine/platform/INativeSurfaceProvider.h"
 #include "engine/platform/SdlStartupPresenter.h"
 #include "engine/platform/SdlWindow.h"
 
@@ -35,6 +39,8 @@ enum class ProbeMode
     SwiftShader,
     Race,
     Inventory,
+    PresentHardware,
+    PresentSwiftShader,
 };
 
 enum class CandidateKind
@@ -49,6 +55,9 @@ struct ProbeOptions
     int windowWidth{1280};
     int windowHeight{720};
     std::uint64_t timeoutMilliseconds{15000};
+    std::uint64_t presentHoldMilliseconds{1000};
+    int presentFrameCount{4};
+    bool resizeExercise{false};
 };
 
 struct AdapterIdentity
@@ -95,6 +104,43 @@ struct CandidateTimings
     double readbackCompletedMilliseconds{0.0};
 };
 
+struct PresentationTimings
+{
+    double windowReadyMilliseconds{0.0};
+    double startupFrameVisibleMilliseconds{0.0};
+    double startupSurfaceReleasedMilliseconds{0.0};
+    double webGpuSurfaceCreatedMilliseconds{0.0};
+    double adapterSelectedMilliseconds{0.0};
+    double deviceRequestedMilliseconds{0.0};
+    double queueAcquiredMilliseconds{0.0};
+    double surfaceCapabilitiesMilliseconds{0.0};
+    double surfaceConfiguredMilliseconds{0.0};
+    double shaderModuleCreatedMilliseconds{0.0};
+    double pipelineCreatedMilliseconds{0.0};
+    double firstFrameAcquiredMilliseconds{0.0};
+    double commandEncodedMilliseconds{0.0};
+    double firstQueueSubmittedMilliseconds{0.0};
+    double firstPresentedMilliseconds{0.0};
+    double queueCompletedMilliseconds{0.0};
+    double postPresentPumpCompletedMilliseconds{0.0};
+};
+
+struct ResizeStepResult
+{
+    std::string label;
+    int requestedWidth{0};
+    int requestedHeight{0};
+    int configuredWidth{0};
+    int configuredHeight{0};
+    int framesPresented{0};
+    bool resizeEventReceived{false};
+    bool pixelSizeEventReceived{false};
+    bool setWindowSizeSucceeded{false};
+    bool syncWindowSucceeded{false};
+    bool reachedRequestedSize{false};
+    std::vector<std::string> surfaceStatuses;
+};
+
 struct CandidateResult
 {
     CandidateKind candidateKind{CandidateKind::Hardware};
@@ -107,6 +153,36 @@ struct CandidateResult
     CandidateTimings timings;
     bool renderVerified{false};
     std::string renderVerificationMessage;
+    std::vector<std::string> deviceMessages;
+};
+
+struct PresentationResult
+{
+    CandidateKind candidateKind{CandidateKind::Hardware};
+    bool success{false};
+    std::string failureStage;
+    std::string failureMessage;
+    AdapterIdentity adapterIdentity;
+    std::size_t adapterIndex{std::numeric_limits<std::size_t>::max()};
+    std::string selectionReason;
+    std::string currentVideoDriver;
+    std::vector<std::string> availableVideoDrivers;
+    greenfield::NativeSurfaceKind nativeSurfaceKind{greenfield::NativeSurfaceKind::None};
+    int surfacePixelWidth{0};
+    int surfacePixelHeight{0};
+    bool hadSdlWindowSurfaceBeforeRelease{false};
+    bool hasSdlWindowSurfaceAfterRelease{false};
+    wgpu::TextureFormat surfaceFormat{wgpu::TextureFormat::Undefined};
+    wgpu::CompositeAlphaMode alphaMode{wgpu::CompositeAlphaMode::Auto};
+    wgpu::PresentMode presentMode{wgpu::PresentMode::Fifo};
+    wgpu::SurfaceGetCurrentTextureStatus currentTextureStatus{wgpu::SurfaceGetCurrentTextureStatus::Error};
+    wgpu::Status presentStatus{wgpu::Status::Error};
+    int successfulFrameCount{0};
+    int resizeEventsReceived{0};
+    int pixelSizeEventsReceived{0};
+    bool sawUnexpectedSurfaceState{false};
+    PresentationTimings timings;
+    std::vector<ResizeStepResult> resizeSteps;
     std::vector<std::string> deviceMessages;
 };
 
@@ -222,6 +298,106 @@ struct MapResult
     return candidateKind == CandidateKind::Hardware ? "hardware" : "swiftshader";
 }
 
+[[nodiscard]] std::string ToString(greenfield::NativeSurfaceKind surfaceKind)
+{
+    switch (surfaceKind)
+    {
+    case greenfield::NativeSurfaceKind::Wayland:
+        return "wayland";
+    case greenfield::NativeSurfaceKind::X11:
+        return "x11";
+    case greenfield::NativeSurfaceKind::None:
+    default:
+        return "none";
+    }
+}
+
+[[nodiscard]] std::string ToString(wgpu::TextureFormat textureFormat)
+{
+    switch (textureFormat)
+    {
+    case wgpu::TextureFormat::BGRA8Unorm:
+        return "bgra8unorm";
+    case wgpu::TextureFormat::RGBA8Unorm:
+        return "rgba8unorm";
+    case wgpu::TextureFormat::BGRA8UnormSrgb:
+        return "bgra8unorm_srgb";
+    case wgpu::TextureFormat::RGBA8UnormSrgb:
+        return "rgba8unorm_srgb";
+    case wgpu::TextureFormat::Undefined:
+    default:
+        return "undefined";
+    }
+}
+
+[[nodiscard]] std::string ToString(wgpu::CompositeAlphaMode alphaMode)
+{
+    switch (alphaMode)
+    {
+    case wgpu::CompositeAlphaMode::Opaque:
+        return "opaque";
+    case wgpu::CompositeAlphaMode::Premultiplied:
+        return "premultiplied";
+    case wgpu::CompositeAlphaMode::Unpremultiplied:
+        return "unpremultiplied";
+    case wgpu::CompositeAlphaMode::Inherit:
+        return "inherit";
+    case wgpu::CompositeAlphaMode::Auto:
+    default:
+        return "auto";
+    }
+}
+
+[[nodiscard]] std::string ToString(wgpu::PresentMode presentMode)
+{
+    switch (presentMode)
+    {
+    case wgpu::PresentMode::Fifo:
+        return "fifo";
+    case wgpu::PresentMode::FifoRelaxed:
+        return "fifo_relaxed";
+    case wgpu::PresentMode::Immediate:
+        return "immediate";
+    case wgpu::PresentMode::Mailbox:
+        return "mailbox";
+    case wgpu::PresentMode::Undefined:
+    default:
+        return "undefined";
+    }
+}
+
+[[nodiscard]] std::string ToString(wgpu::SurfaceGetCurrentTextureStatus status)
+{
+    switch (status)
+    {
+    case wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal:
+        return "success_optimal";
+    case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
+        return "success_suboptimal";
+    case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
+        return "timeout";
+    case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
+        return "outdated";
+    case wgpu::SurfaceGetCurrentTextureStatus::Lost:
+        return "lost";
+    case wgpu::SurfaceGetCurrentTextureStatus::Error:
+    default:
+        return "error";
+    }
+}
+
+[[nodiscard]] std::string ToString(wgpu::Status status)
+{
+    switch (status)
+    {
+    case wgpu::Status::Success:
+        return "success";
+    case wgpu::Status::Error:
+    default:
+        return "error";
+    }
+}
+
 [[nodiscard]] std::string ToString(ProbeMode mode)
 {
     switch (mode)
@@ -234,9 +410,27 @@ struct MapResult
         return "race";
     case ProbeMode::Inventory:
         return "inventory";
+    case ProbeMode::PresentHardware:
+        return "present-hardware";
+    case ProbeMode::PresentSwiftShader:
+        return "present-swiftshader";
     }
 
     return "race";
+}
+
+[[nodiscard]] std::string ToString(wgpu::QueueWorkDoneStatus status)
+{
+    switch (status)
+    {
+    case wgpu::QueueWorkDoneStatus::Success:
+        return "success";
+    case wgpu::QueueWorkDoneStatus::CallbackCancelled:
+        return "callback_cancelled";
+    case wgpu::QueueWorkDoneStatus::Error:
+    default:
+        return "error";
+    }
 }
 
 [[nodiscard]] double MillisecondsSince(Clock::time_point epoch, Clock::time_point timePoint)
@@ -368,6 +562,13 @@ void MarkFailure(CandidateResult& result, std::string stage, std::string message
     result.failureMessage = std::move(message);
 }
 
+void MarkFailure(PresentationResult& result, std::string stage, std::string message)
+{
+    result.success = false;
+    result.failureStage = std::move(stage);
+    result.failureMessage = std::move(message);
+}
+
 void PrintSelection(CandidateKind candidateKind, const AdapterInventoryRecord& selectedAdapter)
 {
     const AdapterIdentity& identity = selectedAdapter.identity;
@@ -382,6 +583,96 @@ void PrintSelection(CandidateKind candidateKind, const AdapterInventoryRecord& s
                                 << " name=" << QuoteForMachineOutput(identity.device)
                                 << " description=" << QuoteForMachineOutput(identity.description) << '\n';
 }
+
+[[nodiscard]] bool IsPresentationMode(ProbeMode mode)
+{
+    return mode == ProbeMode::PresentHardware || mode == ProbeMode::PresentSwiftShader;
+}
+
+[[nodiscard]] CandidateKind GetPresentationCandidateKind(ProbeMode mode)
+{
+    return mode == ProbeMode::PresentSwiftShader ? CandidateKind::SwiftShader : CandidateKind::Hardware;
+}
+
+[[nodiscard]] bool IsUsableSurfaceTextureStatus(wgpu::SurfaceGetCurrentTextureStatus status)
+{
+    return status == wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal ||
+           status == wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal;
+}
+
+[[nodiscard]] bool IsUnexpectedSurfaceTextureStatus(wgpu::SurfaceGetCurrentTextureStatus status)
+{
+    return status != wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal;
+}
+
+[[nodiscard]] std::vector<std::string> GetAvailableSdlVideoDrivers()
+{
+    std::vector<std::string> videoDrivers;
+    const int driverCount = SDL_GetNumVideoDrivers();
+    for (int index = 0; index < driverCount; ++index)
+    {
+        const char* driverName = SDL_GetVideoDriver(index);
+        if (driverName != nullptr)
+        {
+            videoDrivers.emplace_back(driverName);
+        }
+    }
+    return videoDrivers;
+}
+
+[[nodiscard]] std::string GetCurrentSdlVideoDriver()
+{
+    const char* driverName = SDL_GetCurrentVideoDriver();
+    return driverName == nullptr ? "none" : std::string(driverName);
+}
+
+struct ResizeEventCounter
+{
+    SDL_WindowID windowId{0};
+    int resizeEventsReceived{0};
+    int pixelSizeEventsReceived{0};
+};
+
+bool CountResizeEvents(void* userData, SDL_Event* event)
+{
+    auto* counter = static_cast<ResizeEventCounter*>(userData);
+    if (counter == nullptr || event == nullptr || event->window.windowID != counter->windowId)
+    {
+        return true;
+    }
+
+    if (event->type == SDL_EVENT_WINDOW_RESIZED)
+    {
+        ++counter->resizeEventsReceived;
+    }
+    else if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
+    {
+        ++counter->pixelSizeEventsReceived;
+    }
+
+    return true;
+}
+
+class ScopedSdlEventWatch
+{
+public:
+    explicit ScopedSdlEventWatch(ResizeEventCounter& counter) noexcept
+        : _counter(&counter)
+    {
+        SDL_AddEventWatch(CountResizeEvents, _counter);
+    }
+
+    ~ScopedSdlEventWatch()
+    {
+        SDL_RemoveEventWatch(CountResizeEvents, _counter);
+    }
+
+    ScopedSdlEventWatch(const ScopedSdlEventWatch&) = delete;
+    ScopedSdlEventWatch& operator=(const ScopedSdlEventWatch&) = delete;
+
+private:
+    ResizeEventCounter* _counter{nullptr};
+};
 
 [[nodiscard]] bool WaitForFuture(const wgpu::Instance& instance, const wgpu::Future& future, std::uint64_t timeoutNanoseconds)
 {
@@ -573,6 +864,66 @@ fn FragmentMain() -> @location(0) vec4f {
     return device.CreateTexture(&textureDescriptor);
 }
 
+[[nodiscard]] wgpu::TextureFormat ChooseSurfaceFormat(const wgpu::SurfaceCapabilities& capabilities)
+{
+    if (capabilities.formatCount == 0U)
+    {
+        return wgpu::TextureFormat::Undefined;
+    }
+
+    for (std::size_t index = 0; index < capabilities.formatCount; ++index)
+    {
+        if (capabilities.formats[index] == wgpu::TextureFormat::BGRA8Unorm)
+        {
+            return capabilities.formats[index];
+        }
+    }
+
+    return capabilities.formats[0];
+}
+
+[[nodiscard]] wgpu::CompositeAlphaMode ChooseAlphaMode(const wgpu::SurfaceCapabilities& capabilities)
+{
+    if (capabilities.alphaModeCount == 0U)
+    {
+        return wgpu::CompositeAlphaMode::Auto;
+    }
+
+    return capabilities.alphaModes[0];
+}
+
+[[nodiscard]] wgpu::Surface CreateNativeWebGpuSurface(const wgpu::Instance& instance,
+                                                     const greenfield::NativeSurfaceDescriptor& nativeSurface)
+{
+    if (nativeSurface.kind == greenfield::NativeSurfaceKind::Wayland)
+    {
+        wgpu::SurfaceSourceWaylandSurface source{};
+        source.display = nativeSurface.display;
+        source.surface = nativeSurface.surface;
+
+        const wgpu::SurfaceDescriptor descriptor{
+            .nextInChain = &source,
+            .label = "Renderer startup probe Wayland surface",
+        };
+        return instance.CreateSurface(&descriptor);
+    }
+
+    if (nativeSurface.kind == greenfield::NativeSurfaceKind::X11)
+    {
+        wgpu::SurfaceSourceXlibWindow source{};
+        source.display = nativeSurface.display;
+        source.window = nativeSurface.window;
+
+        const wgpu::SurfaceDescriptor descriptor{
+            .nextInChain = &source,
+            .label = "Renderer startup probe X11 surface",
+        };
+        return instance.CreateSurface(&descriptor);
+    }
+
+    return {};
+}
+
 [[nodiscard]] wgpu::Buffer CreateReadbackBuffer(const wgpu::Device& device, std::uint64_t byteCount)
 {
     const wgpu::BufferDescriptor bufferDescriptor{
@@ -616,6 +967,111 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
     queue.Submit(1, &commandBuffer);
 }
 
+void SubmitPresentationFrame(const wgpu::Device& device,
+                             const wgpu::Queue& queue,
+                             const wgpu::RenderPipeline& pipeline,
+                             const wgpu::Texture& surfaceTexture)
+{
+    wgpu::TextureView textureView = surfaceTexture.CreateView();
+    wgpu::RenderPassColorAttachment colorAttachment{};
+    colorAttachment.view = textureView;
+    colorAttachment.loadOp = wgpu::LoadOp::Clear;
+    colorAttachment.storeOp = wgpu::StoreOp::Store;
+    colorAttachment.clearValue = wgpu::Color{
+        .r = 0.02,
+        .g = 0.19,
+        .b = 0.34,
+        .a = 1.0,
+    };
+
+    const wgpu::RenderPassDescriptor renderPassDescriptor{
+        .label = "Renderer startup probe native presentation render pass",
+        .colorAttachmentCount = 1,
+        .colorAttachments = &colorAttachment,
+    };
+
+    wgpu::CommandEncoder commandEncoder = device.CreateCommandEncoder();
+    wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDescriptor);
+    renderPass.SetPipeline(pipeline);
+    renderPass.Draw(3);
+    renderPass.End();
+
+    wgpu::CommandBuffer commandBuffer = commandEncoder.Finish();
+    queue.Submit(1, &commandBuffer);
+}
+
+[[nodiscard]] QueueDoneResult WaitForQueue(const wgpu::Instance& instance,
+                                           const wgpu::Queue& queue,
+                                           std::uint64_t timeoutNanoseconds);
+
+void ConfigureNativeSurface(wgpu::Surface& surface,
+                            const wgpu::Device& device,
+                            wgpu::TextureFormat surfaceFormat,
+                            wgpu::CompositeAlphaMode alphaMode,
+                            wgpu::PresentMode presentMode,
+                            std::uint32_t width,
+                            std::uint32_t height)
+{
+    const wgpu::SurfaceConfiguration configuration{
+        .device = device,
+        .format = surfaceFormat,
+        .usage = wgpu::TextureUsage::RenderAttachment,
+        .width = width,
+        .height = height,
+        .alphaMode = alphaMode,
+        .presentMode = presentMode,
+    };
+    surface.Configure(&configuration);
+}
+
+struct PresentedFrameResult
+{
+    wgpu::SurfaceGetCurrentTextureStatus textureStatus{wgpu::SurfaceGetCurrentTextureStatus::Error};
+    wgpu::Status presentStatus{wgpu::Status::Error};
+    wgpu::QueueWorkDoneStatus queueStatus{wgpu::QueueWorkDoneStatus::Error};
+    double acquiredMilliseconds{0.0};
+    double commandSubmittedMilliseconds{0.0};
+    double presentedMilliseconds{0.0};
+    double queueCompletedMilliseconds{0.0};
+    std::string queueMessage;
+};
+
+[[nodiscard]] PresentedFrameResult PresentCheckedFrame(const wgpu::Instance& instance,
+                                                       const wgpu::Device& device,
+                                                       const wgpu::Queue& queue,
+                                                       wgpu::Surface& surface,
+                                                       const wgpu::RenderPipeline& pipeline,
+                                                       const ProbeOptions& options,
+                                                       Clock::time_point epoch)
+{
+    PresentedFrameResult result{};
+
+    wgpu::SurfaceTexture surfaceTexture{};
+    surface.GetCurrentTexture(&surfaceTexture);
+    result.textureStatus = surfaceTexture.status;
+    result.acquiredMilliseconds = MillisecondsSince(epoch, Clock::now());
+    if (!IsUsableSurfaceTextureStatus(surfaceTexture.status) || surfaceTexture.texture == nullptr)
+    {
+        return result;
+    }
+
+    SubmitPresentationFrame(device, queue, pipeline, surfaceTexture.texture);
+    result.commandSubmittedMilliseconds = MillisecondsSince(epoch, Clock::now());
+    result.presentStatus = surface.Present();
+    result.presentedMilliseconds = MillisecondsSince(epoch, Clock::now());
+    surfaceTexture.texture = nullptr;
+    if (result.presentStatus != wgpu::Status::Success)
+    {
+        return result;
+    }
+
+    QueueDoneResult queueDoneResult = WaitForQueue(instance, queue, TimeoutNanoseconds(options));
+    result.queueCompletedMilliseconds = MillisecondsSince(epoch, Clock::now());
+    result.queueStatus = queueDoneResult.status;
+    result.queueMessage = std::move(queueDoneResult.message);
+    return result;
+}
+
 [[nodiscard]] QueueDoneResult WaitForQueue(const wgpu::Instance& instance,
                                            const wgpu::Queue& queue,
                                            std::uint64_t timeoutNanoseconds)
@@ -631,6 +1087,413 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
     {
         result.status = wgpu::QueueWorkDoneStatus::Error;
         result.message = "Timed out while waiting for queue work completion.";
+    }
+
+    return result;
+}
+
+[[nodiscard]] std::optional<std::size_t> SelectAdapterIndex(CandidateKind candidateKind,
+                                                            const std::vector<AdapterInventoryRecord>& records)
+{
+    if (candidateKind == CandidateKind::Hardware)
+    {
+        return SelectHardwareAdapterIndex(records);
+    }
+
+    return SelectSwiftShaderAdapterIndex(records);
+}
+
+[[nodiscard]] bool FramePresentedSuccessfully(const PresentedFrameResult& frameResult)
+{
+    return IsUsableSurfaceTextureStatus(frameResult.textureStatus) && frameResult.presentStatus == wgpu::Status::Success &&
+           frameResult.queueStatus == wgpu::QueueWorkDoneStatus::Success;
+}
+
+void RecordPresentedFrame(PresentationResult& result,
+                          ResizeStepResult* resizeStep,
+                          const PresentedFrameResult& frameResult)
+{
+    if (result.successfulFrameCount == 0)
+    {
+        result.currentTextureStatus = frameResult.textureStatus;
+        result.presentStatus = frameResult.presentStatus;
+        result.timings.firstFrameAcquiredMilliseconds = frameResult.acquiredMilliseconds;
+        result.timings.commandEncodedMilliseconds = frameResult.commandSubmittedMilliseconds;
+        result.timings.firstQueueSubmittedMilliseconds = frameResult.commandSubmittedMilliseconds;
+        result.timings.firstPresentedMilliseconds = frameResult.presentedMilliseconds;
+        result.timings.queueCompletedMilliseconds = frameResult.queueCompletedMilliseconds;
+    }
+
+    if (IsUnexpectedSurfaceTextureStatus(frameResult.textureStatus))
+    {
+        result.sawUnexpectedSurfaceState = true;
+    }
+
+    ++result.successfulFrameCount;
+    if (resizeStep != nullptr)
+    {
+        ++resizeStep->framesPresented;
+        resizeStep->surfaceStatuses.push_back(ToString(frameResult.textureStatus));
+    }
+}
+
+[[nodiscard]] bool PresentFrameSequence(const wgpu::Instance& instance,
+                                        const wgpu::Device& device,
+                                        const wgpu::Queue& queue,
+                                        wgpu::Surface& surface,
+                                        const wgpu::RenderPipeline& pipeline,
+                                        const ProbeOptions& options,
+                                        Clock::time_point epoch,
+                                        int frameCount,
+                                        PresentationResult& result,
+                                        ResizeStepResult* resizeStep = nullptr)
+{
+    for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
+    {
+        PresentedFrameResult frameResult = PresentCheckedFrame(instance, device, queue, surface, pipeline, options, epoch);
+        if (!FramePresentedSuccessfully(frameResult))
+        {
+            result.currentTextureStatus = frameResult.textureStatus;
+            result.presentStatus = frameResult.presentStatus;
+            result.sawUnexpectedSurfaceState = result.sawUnexpectedSurfaceState ||
+                                               IsUnexpectedSurfaceTextureStatus(frameResult.textureStatus);
+            MarkFailure(result,
+                        "present_frame",
+                        "Frame presentation failed: texture_status=" + ToString(frameResult.textureStatus) +
+                            " present_status=" + ToString(frameResult.presentStatus) +
+                            " queue_status=" + ToString(frameResult.queueStatus) + " queue_message=\"" +
+                            frameResult.queueMessage + "\".");
+            return false;
+        }
+
+        RecordPresentedFrame(result, resizeStep, frameResult);
+    }
+
+    return true;
+}
+
+[[nodiscard]] bool WaitForWindowSize(greenfield::SdlWindow& window,
+                                     int width,
+                                     int height,
+                                     const ProbeOptions& options)
+{
+    const auto waitStart = Clock::now();
+    while (!window.ShouldClose())
+    {
+        window.PollEvents();
+        if (window.GetWidth() == width && window.GetHeight() == height)
+        {
+            return true;
+        }
+
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - waitStart).count() >=
+            static_cast<long long>(options.timeoutMilliseconds))
+        {
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(8));
+    }
+
+    return false;
+}
+
+[[nodiscard]] ResizeStepResult RunResizeStep(greenfield::SdlWindow& window,
+                                             ResizeEventCounter& resizeEventCounter,
+                                             wgpu::Surface& surface,
+                                             const wgpu::Device& device,
+                                             const wgpu::Queue& queue,
+                                             const wgpu::Instance& instance,
+                                             const wgpu::RenderPipeline& pipeline,
+                                             const ProbeOptions& options,
+                                             Clock::time_point epoch,
+                                             wgpu::TextureFormat surfaceFormat,
+                                             wgpu::CompositeAlphaMode alphaMode,
+                                             wgpu::PresentMode presentMode,
+                                             std::string label,
+                                             int width,
+                                             int height,
+                                             PresentationResult& result)
+{
+    ResizeStepResult step{};
+    step.label = std::move(label);
+    step.requestedWidth = width;
+    step.requestedHeight = height;
+    const int previousResizeEvents = resizeEventCounter.resizeEventsReceived;
+    const int previousPixelSizeEvents = resizeEventCounter.pixelSizeEventsReceived;
+
+    step.setWindowSizeSucceeded = SDL_SetWindowSize(window.GetNativeWindow(), width, height);
+    step.syncWindowSucceeded = SDL_SyncWindow(window.GetNativeWindow());
+    step.reachedRequestedSize = WaitForWindowSize(window, width, height, options);
+    step.resizeEventReceived = resizeEventCounter.resizeEventsReceived > previousResizeEvents;
+    step.pixelSizeEventReceived = resizeEventCounter.pixelSizeEventsReceived > previousPixelSizeEvents;
+    result.resizeEventsReceived = resizeEventCounter.resizeEventsReceived;
+    result.pixelSizeEventsReceived = resizeEventCounter.pixelSizeEventsReceived;
+
+    if (!step.setWindowSizeSucceeded)
+    {
+        MarkFailure(result, "resize_set_window_size", "SDL_SetWindowSize failed: " + std::string(SDL_GetError()));
+        return step;
+    }
+
+    if (!step.syncWindowSucceeded)
+    {
+        MarkFailure(result, "resize_sync_window", "SDL_SyncWindow failed: " + std::string(SDL_GetError()));
+        return step;
+    }
+
+    if (!step.reachedRequestedSize)
+    {
+        MarkFailure(result, "resize_wait", "Timed out waiting for SDL to report the requested window size.");
+        return step;
+    }
+
+    surface.Unconfigure();
+    step.configuredWidth = window.GetSurfacePixelWidth();
+    step.configuredHeight = window.GetSurfacePixelHeight();
+    ConfigureNativeSurface(surface,
+                           device,
+                           surfaceFormat,
+                           alphaMode,
+                           presentMode,
+                           static_cast<std::uint32_t>(step.configuredWidth),
+                           static_cast<std::uint32_t>(step.configuredHeight));
+
+    PresentFrameSequence(instance, device, queue, surface, pipeline, options, epoch, options.presentFrameCount, result, &step);
+    return step;
+}
+
+[[nodiscard]] PresentationResult RunPresentationCandidate(CandidateKind candidateKind,
+                                                         const ProbeOptions& options,
+                                                         Clock::time_point epoch)
+{
+    PresentationResult result{};
+    result.candidateKind = candidateKind;
+
+    try
+    {
+        greenfield::SdlWindow window{"Greenfield Native Presentation Probe", options.windowWidth, options.windowHeight};
+        result.timings.windowReadyMilliseconds = MillisecondsSince(epoch, Clock::now());
+        result.currentVideoDriver = GetCurrentSdlVideoDriver();
+        result.availableVideoDrivers = GetAvailableSdlVideoDrivers();
+        result.surfacePixelWidth = window.GetSurfacePixelWidth();
+        result.surfacePixelHeight = window.GetSurfacePixelHeight();
+        ResizeEventCounter resizeEventCounter{.windowId = SDL_GetWindowID(window.GetNativeWindow())};
+        ScopedSdlEventWatch resizeEventWatch{resizeEventCounter};
+
+        {
+            greenfield::SdlStartupPresenter startupPresenter{window};
+            startupPresenter.DrawFrame();
+            result.timings.startupFrameVisibleMilliseconds = MillisecondsSince(epoch, Clock::now());
+            result.hadSdlWindowSurfaceBeforeRelease = SDL_WindowHasSurface(window.GetNativeWindow());
+        }
+
+        result.timings.startupSurfaceReleasedMilliseconds = MillisecondsSince(epoch, Clock::now());
+        result.hasSdlWindowSurfaceAfterRelease = SDL_WindowHasSurface(window.GetNativeWindow());
+        const greenfield::NativeSurfaceDescriptor nativeSurface = window.GetNativeSurfaceDescriptor();
+        result.nativeSurfaceKind = nativeSurface.kind;
+        if (nativeSurface.kind == greenfield::NativeSurfaceKind::None)
+        {
+            MarkFailure(result, "native_surface", "SDL window did not expose Wayland or X11 native surface handles.");
+            return result;
+        }
+
+        const wgpu::InstanceDescriptor instanceDescriptor = MakeProbeInstanceDescriptor();
+        dawn::native::Instance nativeInstance{&instanceDescriptor};
+        wgpu::Instance instance{nativeInstance.Get()};
+        if (instance == nullptr)
+        {
+            MarkFailure(result, "instance", "Failed to create WebGPU instance.");
+            return result;
+        }
+
+        wgpu::Surface surface = CreateNativeWebGpuSurface(instance, nativeSurface);
+        if (surface == nullptr)
+        {
+            MarkFailure(result, "surface", "Failed to create WebGPU surface from SDL native handles.");
+            return result;
+        }
+        result.timings.webGpuSurfaceCreatedMilliseconds = MillisecondsSince(epoch, Clock::now());
+
+        std::vector<AdapterInventoryRecord> adapterRecords = EnumerateVulkanAdapters(nativeInstance);
+        const std::optional<std::size_t> selectedAdapterIndex = SelectAdapterIndex(candidateKind, adapterRecords);
+        if (!selectedAdapterIndex.has_value())
+        {
+            MarkFailure(result, "adapter_selection", BuildSelectionFailureMessage(candidateKind, adapterRecords));
+            return result;
+        }
+
+        const AdapterInventoryRecord& selectedAdapter = adapterRecords[*selectedAdapterIndex];
+        result.adapterIdentity = selectedAdapter.identity;
+        result.adapterIndex = selectedAdapter.index;
+        result.selectionReason = selectedAdapter.classificationReason;
+        result.timings.adapterSelectedMilliseconds = MillisecondsSince(epoch, Clock::now());
+        PrintSelection(candidateKind, selectedAdapter);
+
+        wgpu::DeviceDescriptor deviceDescriptor{};
+        deviceDescriptor.SetDeviceLostCallback(
+            wgpu::CallbackMode::AllowSpontaneous,
+            [](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView message) {
+                const std::string messageText = ToString(message);
+                if (messageText != "Device was destroyed.")
+                {
+                    std::cerr << "WebGPU device lost during native presentation probe: " << messageText << '\n';
+                }
+            });
+        deviceDescriptor.SetUncapturedErrorCallback([](const wgpu::Device&, wgpu::ErrorType, wgpu::StringView message) {
+            std::cerr << "WebGPU uncaptured error during native presentation probe: " << ToString(message) << '\n';
+        });
+
+        RequestDeviceResult deviceRequestResult{};
+        auto deviceCallback =
+            [&deviceRequestResult](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message) {
+                deviceRequestResult.status = status;
+                deviceRequestResult.device = device;
+                deviceRequestResult.message = ToString(message);
+            };
+
+        const wgpu::Future deviceFuture =
+            selectedAdapter.adapter.RequestDevice(&deviceDescriptor, wgpu::CallbackMode::WaitAnyOnly, deviceCallback);
+        if (!WaitForFuture(instance, deviceFuture, TimeoutNanoseconds(options)))
+        {
+            MarkFailure(result, "device", "Timed out while requesting device.");
+            return result;
+        }
+        result.timings.deviceRequestedMilliseconds = MillisecondsSince(epoch, Clock::now());
+        if (deviceRequestResult.status != wgpu::RequestDeviceStatus::Success || deviceRequestResult.device == nullptr)
+        {
+            MarkFailure(result, "device", "Device request failed: " + deviceRequestResult.message);
+            return result;
+        }
+
+        wgpu::Queue queue = deviceRequestResult.device.GetQueue();
+        if (queue == nullptr)
+        {
+            MarkFailure(result, "queue", "Device returned a null queue.");
+            return result;
+        }
+        result.timings.queueAcquiredMilliseconds = MillisecondsSince(epoch, Clock::now());
+
+        wgpu::SurfaceCapabilities capabilities{};
+        if (surface.GetCapabilities(selectedAdapter.adapter, &capabilities) != wgpu::Status::Success)
+        {
+            MarkFailure(result, "surface_capabilities", "Failed to query native WebGPU surface capabilities.");
+            return result;
+        }
+        result.timings.surfaceCapabilitiesMilliseconds = MillisecondsSince(epoch, Clock::now());
+
+        result.surfaceFormat = ChooseSurfaceFormat(capabilities);
+        result.alphaMode = ChooseAlphaMode(capabilities);
+        if (result.surfaceFormat == wgpu::TextureFormat::Undefined)
+        {
+            MarkFailure(result, "surface_capabilities", "Native WebGPU surface reported no usable formats.");
+            return result;
+        }
+
+        ConfigureNativeSurface(surface,
+                               deviceRequestResult.device,
+                               result.surfaceFormat,
+                               result.alphaMode,
+                               result.presentMode,
+                               static_cast<std::uint32_t>(result.surfacePixelWidth),
+                               static_cast<std::uint32_t>(result.surfacePixelHeight));
+        result.timings.surfaceConfiguredMilliseconds = MillisecondsSince(epoch, Clock::now());
+
+        wgpu::ShaderModule shaderModule = CreateProbeShaderModule(deviceRequestResult.device);
+        if (shaderModule == nullptr)
+        {
+            MarkFailure(result, "shader", "Failed to create shader module.");
+            return result;
+        }
+        result.timings.shaderModuleCreatedMilliseconds = MillisecondsSince(epoch, Clock::now());
+
+        wgpu::RenderPipeline pipeline = CreateProbePipeline(deviceRequestResult.device, shaderModule, result.surfaceFormat);
+        if (pipeline == nullptr)
+        {
+            MarkFailure(result, "pipeline", "Failed to create render pipeline.");
+            return result;
+        }
+        result.timings.pipelineCreatedMilliseconds = MillisecondsSince(epoch, Clock::now());
+
+        if (!PresentFrameSequence(instance,
+                                  deviceRequestResult.device,
+                                  queue,
+                                  surface,
+                                  pipeline,
+                                  options,
+                                  epoch,
+                                  options.presentFrameCount,
+                                  result))
+        {
+            return result;
+        }
+
+        if (options.resizeExercise)
+        {
+            result.resizeSteps.push_back(RunResizeStep(window,
+                                                       resizeEventCounter,
+                                                       surface,
+                                                       deviceRequestResult.device,
+                                                       queue,
+                                                       instance,
+                                                       pipeline,
+                                                       options,
+                                                       epoch,
+                                                       result.surfaceFormat,
+                                                       result.alphaMode,
+                                                       result.presentMode,
+                                                       "smaller",
+                                                       640,
+                                                       360,
+                                                       result));
+            if (!result.failureStage.empty())
+            {
+                return result;
+            }
+
+            result.resizeSteps.push_back(RunResizeStep(window,
+                                                       resizeEventCounter,
+                                                       surface,
+                                                       deviceRequestResult.device,
+                                                       queue,
+                                                       instance,
+                                                       pipeline,
+                                                       options,
+                                                       epoch,
+                                                       result.surfaceFormat,
+                                                       result.alphaMode,
+                                                       result.presentMode,
+                                                       "larger",
+                                                       1280,
+                                                       720,
+                                                       result));
+            if (!result.failureStage.empty())
+            {
+                return result;
+            }
+        }
+        else
+        {
+            const auto holdStart = Clock::now();
+            while (!window.ShouldClose() &&
+                   std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - holdStart).count() <
+                       static_cast<long long>(options.presentHoldMilliseconds))
+            {
+                window.PollEvents();
+                std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            }
+        }
+
+        result.resizeEventsReceived = resizeEventCounter.resizeEventsReceived;
+        result.pixelSizeEventsReceived = resizeEventCounter.pixelSizeEventsReceived;
+        result.timings.postPresentPumpCompletedMilliseconds = MillisecondsSince(epoch, Clock::now());
+        surface.Unconfigure();
+        surface = nullptr;
+        result.success = true;
+    }
+    catch (const std::exception& exception)
+    {
+        MarkFailure(result, "exception", exception.what());
     }
 
     return result;
@@ -966,6 +1829,16 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
         return ProbeMode::Inventory;
     }
 
+    if (value == "present-hardware")
+    {
+        return ProbeMode::PresentHardware;
+    }
+
+    if (value == "present-swiftshader")
+    {
+        return ProbeMode::PresentSwiftShader;
+    }
+
     return std::nullopt;
 }
 
@@ -993,7 +1866,8 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
             std::optional<ProbeMode> parsedMode = ParseMode(argument.substr(7));
             if (!parsedMode.has_value())
             {
-                throw std::invalid_argument("Expected --mode=hardware, --mode=swiftshader, --mode=race, or --mode=inventory.");
+                throw std::invalid_argument("Expected --mode=hardware, --mode=swiftshader, --mode=race, "
+                                            "--mode=inventory, --mode=present-hardware, or --mode=present-swiftshader.");
             }
             options.mode = *parsedMode;
         }
@@ -1007,6 +1881,23 @@ void SubmitProbeRenderPass(const wgpu::Device& device,
         else if (argument.rfind("--timeout-ms=", 0) == 0)
         {
             options.timeoutMilliseconds = static_cast<std::uint64_t>(std::stoull(std::string(argument.substr(13))));
+        }
+        else if (argument.rfind("--present-hold-ms=", 0) == 0)
+        {
+            options.presentHoldMilliseconds =
+                static_cast<std::uint64_t>(std::stoull(std::string(argument.substr(18))));
+        }
+        else if (argument.rfind("--present-frame-count=", 0) == 0)
+        {
+            options.presentFrameCount = std::stoi(std::string(argument.substr(22)));
+            if (options.presentFrameCount <= 0)
+            {
+                throw std::invalid_argument("Expected --present-frame-count to be greater than zero.");
+            }
+        }
+        else if (argument == "--resize-exercise")
+        {
+            options.resizeExercise = true;
         }
         else
         {
@@ -1087,6 +1978,162 @@ void PrintMachineResult(ProbeMode mode, const CandidateResult& result)
               << " queue_complete_ms=" << result.timings.queueCompletedMilliseconds
               << " readback_complete_ms=" << result.timings.readbackCompletedMilliseconds
               << " render_verified=" << (result.renderVerified ? "true" : "false") << '\n';
+}
+
+[[nodiscard]] std::string JoinVideoDrivers(const std::vector<std::string>& videoDrivers)
+{
+    std::ostringstream stream;
+    for (std::size_t index = 0; index < videoDrivers.size(); ++index)
+    {
+        if (index > 0U)
+        {
+            stream << ',';
+        }
+        stream << videoDrivers[index];
+    }
+    return stream.str();
+}
+
+void PrintPresentationResult(ProbeMode mode, const PresentationResult& result)
+{
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "Greenfield renderer startup probe\n";
+    std::cout << "mode=" << ToString(mode) << " candidate=" << ToString(result.candidateKind) << '\n';
+    std::cout << "SDL video: current=" << result.currentVideoDriver
+              << " available=" << JoinVideoDrivers(result.availableVideoDrivers) << '\n';
+    std::cout << "Native surface: kind=" << ToString(result.nativeSurfaceKind)
+              << " size=" << result.surfacePixelWidth << 'x' << result.surfacePixelHeight
+              << " sdl_surface_before_release=" << (result.hadSdlWindowSurfaceBeforeRelease ? "true" : "false")
+              << " sdl_surface_after_release=" << (result.hasSdlWindowSurfaceAfterRelease ? "true" : "false")
+              << '\n';
+    std::cout << "Presentation candidate " << ToString(result.candidateKind) << ": "
+              << (result.success ? "presented" : "failed") << '\n';
+    std::cout << "  adapter: index=";
+    if (result.adapterIndex == std::numeric_limits<std::size_t>::max())
+    {
+        std::cout << "none";
+    }
+    else
+    {
+        std::cout << result.adapterIndex;
+    }
+    std::cout << " selection_reason=" << (result.selectionReason.empty() ? "none" : result.selectionReason)
+              << " backend=" << result.adapterIdentity.backendType
+              << " type=" << result.adapterIdentity.adapterType
+              << " vendor=\"" << result.adapterIdentity.vendor
+              << "\" device=\"" << result.adapterIdentity.device
+              << "\" description=\"" << result.adapterIdentity.description << "\"\n";
+    std::cout << "  surface_format=" << ToString(result.surfaceFormat)
+              << " alpha_mode=" << ToString(result.alphaMode)
+              << " present_mode=" << ToString(result.presentMode)
+              << " current_texture_status=" << ToString(result.currentTextureStatus)
+              << " present_status=" << ToString(result.presentStatus)
+              << " successful_frames=" << result.successfulFrameCount
+              << " resize_events=" << result.resizeEventsReceived
+              << " pixel_size_events=" << result.pixelSizeEventsReceived
+              << " unexpected_surface_state=" << (result.sawUnexpectedSurfaceState ? "true" : "false") << '\n';
+    for (const ResizeStepResult& resizeStep : result.resizeSteps)
+    {
+        std::cout << "  resize_step=" << resizeStep.label
+                  << " requested=" << resizeStep.requestedWidth << 'x' << resizeStep.requestedHeight
+                  << " configured=" << resizeStep.configuredWidth << 'x' << resizeStep.configuredHeight
+                  << " frames_presented=" << resizeStep.framesPresented
+                  << " resize_event=" << (resizeStep.resizeEventReceived ? "true" : "false")
+                  << " pixel_size_event=" << (resizeStep.pixelSizeEventReceived ? "true" : "false")
+                  << " reached_requested_size=" << (resizeStep.reachedRequestedSize ? "true" : "false") << '\n';
+    }
+    std::cout << "  startup_frame_visible_ms=" << result.timings.startupFrameVisibleMilliseconds
+              << " startup_surface_released_ms=" << result.timings.startupSurfaceReleasedMilliseconds
+              << " webgpu_surface_created_ms=" << result.timings.webGpuSurfaceCreatedMilliseconds
+              << " first_presented_ms=" << result.timings.firstPresentedMilliseconds
+              << " queue_done_ms=" << result.timings.queueCompletedMilliseconds << '\n';
+    if (!result.success)
+    {
+        std::cout << "  failure: stage=" << result.failureStage << " message=\"" << result.failureMessage << "\"\n";
+    }
+    for (const std::string& message : result.deviceMessages)
+    {
+        std::cout << "  device_message: " << message << '\n';
+    }
+
+    const std::string availableDrivers = JoinVideoDrivers(result.availableVideoDrivers);
+    std::cout << "PROBE_SDL_VIDEO"
+              << " mode=" << ToString(mode)
+              << " current=" << result.currentVideoDriver
+              << " available=" << QuoteForMachineOutput(availableDrivers) << '\n';
+    std::cout << "PROBE_NATIVE_SURFACE"
+              << " mode=" << ToString(mode)
+              << " kind=" << ToString(result.nativeSurfaceKind)
+              << " width=" << result.surfacePixelWidth
+              << " height=" << result.surfacePixelHeight
+              << " sdl_surface_before_release=" << (result.hadSdlWindowSurfaceBeforeRelease ? "true" : "false")
+              << " sdl_surface_after_release=" << (result.hasSdlWindowSurfaceAfterRelease ? "true" : "false")
+              << '\n';
+    std::cout << "PROBE_PRESENT_RESULT"
+              << " mode=" << ToString(mode)
+              << " candidate=" << ToString(result.candidateKind)
+              << " success=" << (result.success ? "true" : "false")
+              << " failure_stage=" << (result.failureStage.empty() ? "none" : result.failureStage)
+              << " adapter_index=";
+    if (result.adapterIndex == std::numeric_limits<std::size_t>::max())
+    {
+        std::cout << "none";
+    }
+    else
+    {
+        std::cout << result.adapterIndex;
+    }
+    std::cout << " selection_reason=" << (result.selectionReason.empty() ? "none" : result.selectionReason)
+              << " backend=" << result.adapterIdentity.backendType
+              << " adapter_type=" << result.adapterIdentity.adapterType
+              << " vendor_id=" << result.adapterIdentity.vendorId
+              << " device_id=" << result.adapterIdentity.deviceId
+              << " surface_format=" << ToString(result.surfaceFormat)
+              << " alpha_mode=" << ToString(result.alphaMode)
+              << " present_mode=" << ToString(result.presentMode)
+              << " current_texture_status=" << ToString(result.currentTextureStatus)
+              << " present_status=" << ToString(result.presentStatus)
+              << " successful_frames=" << result.successfulFrameCount
+              << " resize_events=" << result.resizeEventsReceived
+              << " pixel_size_events=" << result.pixelSizeEventsReceived
+              << " unexpected_surface_state=" << (result.sawUnexpectedSurfaceState ? "true" : "false")
+              << " window_ready_ms=" << result.timings.windowReadyMilliseconds
+              << " startup_frame_visible_ms=" << result.timings.startupFrameVisibleMilliseconds
+              << " startup_surface_released_ms=" << result.timings.startupSurfaceReleasedMilliseconds
+              << " webgpu_surface_created_ms=" << result.timings.webGpuSurfaceCreatedMilliseconds
+              << " adapter_selected_ms=" << result.timings.adapterSelectedMilliseconds
+              << " device_request_ms=" << result.timings.deviceRequestedMilliseconds
+              << " queue_acquired_ms=" << result.timings.queueAcquiredMilliseconds
+              << " surface_capabilities_ms=" << result.timings.surfaceCapabilitiesMilliseconds
+              << " surface_configured_ms=" << result.timings.surfaceConfiguredMilliseconds
+              << " shader_ready_ms=" << result.timings.shaderModuleCreatedMilliseconds
+              << " pipeline_ready_ms=" << result.timings.pipelineCreatedMilliseconds
+              << " first_frame_acquired_ms=" << result.timings.firstFrameAcquiredMilliseconds
+              << " command_encoded_ms=" << result.timings.commandEncodedMilliseconds
+              << " preliminary_ready_ms=" << result.timings.firstQueueSubmittedMilliseconds
+              << " first_presented_ms=" << result.timings.firstPresentedMilliseconds
+              << " queue_complete_ms=" << result.timings.queueCompletedMilliseconds
+              << " post_present_pump_ms=" << result.timings.postPresentPumpCompletedMilliseconds
+              << '\n';
+    for (const ResizeStepResult& resizeStep : result.resizeSteps)
+    {
+        std::cout << "PROBE_RESIZE_STEP"
+                  << " mode=" << ToString(mode)
+                  << " candidate=" << ToString(result.candidateKind)
+                  << " label=" << resizeStep.label
+                  << " requested_width=" << resizeStep.requestedWidth
+                  << " requested_height=" << resizeStep.requestedHeight
+                  << " configured_width=" << resizeStep.configuredWidth
+                  << " configured_height=" << resizeStep.configuredHeight
+                  << " frames_presented=" << resizeStep.framesPresented
+                  << " resize_event=" << (resizeStep.resizeEventReceived ? "true" : "false")
+                  << " pixel_size_event=" << (resizeStep.pixelSizeEventReceived ? "true" : "false")
+                  << " set_window_size=" << (resizeStep.setWindowSizeSucceeded ? "true" : "false")
+                  << " sync_window=" << (resizeStep.syncWindowSucceeded ? "true" : "false")
+                  << " reached_requested_size=" << (resizeStep.reachedRequestedSize ? "true" : "false")
+                  << " surface_statuses=" << QuoteForMachineOutput(JoinVideoDrivers(resizeStep.surfaceStatuses))
+                  << '\n';
+    }
 }
 
 void PrintAdapterInventoryRecord(const AdapterInventoryRecord& record)
@@ -1221,6 +2268,15 @@ int main(int argc, char** argv)
         if (options.mode == ProbeMode::Inventory)
         {
             return RunInventoryMode();
+        }
+
+        if (IsPresentationMode(options.mode))
+        {
+            const Clock::time_point epoch = Clock::now();
+            const CandidateKind candidateKind = GetPresentationCandidateKind(options.mode);
+            const PresentationResult result = RunPresentationCandidate(candidateKind, options, epoch);
+            PrintPresentationResult(options.mode, result);
+            return result.success ? 0 : 2;
         }
 
         const std::vector<CandidateKind> candidateKinds = GetCandidatesForMode(options.mode);
