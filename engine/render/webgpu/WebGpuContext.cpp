@@ -19,6 +19,48 @@ std::string ToString(wgpu::StringView message)
     return std::string(view);
 }
 
+std::string ToString(wgpu::BackendType backendType)
+{
+    switch (backendType)
+    {
+    case wgpu::BackendType::Null:
+        return "null";
+    case wgpu::BackendType::WebGPU:
+        return "webgpu";
+    case wgpu::BackendType::D3D11:
+        return "d3d11";
+    case wgpu::BackendType::D3D12:
+        return "d3d12";
+    case wgpu::BackendType::Metal:
+        return "metal";
+    case wgpu::BackendType::Vulkan:
+        return "vulkan";
+    case wgpu::BackendType::OpenGL:
+        return "opengl";
+    case wgpu::BackendType::OpenGLES:
+        return "opengles";
+    case wgpu::BackendType::Undefined:
+    default:
+        return "undefined";
+    }
+}
+
+std::string ToString(wgpu::AdapterType adapterType)
+{
+    switch (adapterType)
+    {
+    case wgpu::AdapterType::DiscreteGPU:
+        return "discrete";
+    case wgpu::AdapterType::IntegratedGPU:
+        return "integrated";
+    case wgpu::AdapterType::CPU:
+        return "cpu";
+    case wgpu::AdapterType::Unknown:
+    default:
+        return "unknown";
+    }
+}
+
 void ThrowIfFalse(bool condition, const std::string& message)
 {
     if (!condition)
@@ -113,6 +155,80 @@ std::uint32_t WebGpuContext::GetSurfaceHeight() const noexcept
     return _surfaceHeight;
 }
 
+WebGpuAdapterIdentity WebGpuContext::GetAdapterIdentity() const
+{
+    ThrowIfFalse(_adapter != nullptr, "Cannot query WebGPU adapter identity before adapter selection.");
+
+    wgpu::AdapterInfo adapterInfo{};
+    const wgpu::Status adapterStatus = _adapter.GetInfo(&adapterInfo);
+    ThrowIfFalse(adapterStatus == wgpu::Status::Success, "Failed to query WebGPU adapter identity.");
+
+    WebGpuAdapterIdentity identity{
+        .vendor = ToString(adapterInfo.vendor),
+        .architecture = ToString(adapterInfo.architecture),
+        .device = ToString(adapterInfo.device),
+        .description = ToString(adapterInfo.description),
+        .backendType = ToString(adapterInfo.backendType),
+        .adapterType = ToString(adapterInfo.adapterType),
+        .vendorId = adapterInfo.vendorID,
+        .deviceId = adapterInfo.deviceID,
+        .subgroupMinSize = adapterInfo.subgroupMinSize,
+        .subgroupMaxSize = adapterInfo.subgroupMaxSize,
+    };
+
+    wgpu::SupportedFeatures features{};
+    _adapter.GetFeatures(&features);
+    identity.featureCount = features.featureCount;
+
+    wgpu::Limits limits{};
+    if (_adapter.GetLimits(&limits) == wgpu::Status::Success)
+    {
+        identity.maxTextureDimension2D = limits.maxTextureDimension2D;
+    }
+
+    return identity;
+}
+
+bool WebGpuContext::IsDeviceLost() const noexcept
+{
+    return _deviceLost;
+}
+
+bool WebGpuContext::HasUncapturedError() const noexcept
+{
+    return _uncapturedError;
+}
+
+const std::string& WebGpuContext::GetDeviceLostMessage() const noexcept
+{
+    return _deviceLostMessage;
+}
+
+const std::string& WebGpuContext::GetUncapturedErrorMessage() const noexcept
+{
+    return _uncapturedErrorMessage;
+}
+
+WebGpuQueueWorkDoneResult WebGpuContext::WaitForQueueWorkDone(std::uint64_t timeoutNanoseconds) const
+{
+    ThrowIfFalse(_instance != nullptr && _queue != nullptr, "Cannot wait for WebGPU queue before initialization.");
+
+    WebGpuQueueWorkDoneResult result{};
+    auto callback = [&result](wgpu::QueueWorkDoneStatus status, wgpu::StringView message) {
+        result.status = status;
+        result.message = ToString(message);
+    };
+
+    const wgpu::Future future = _queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly, callback);
+    if (_instance.WaitAny(future, timeoutNanoseconds) != wgpu::WaitStatus::Success)
+    {
+        result.status = wgpu::QueueWorkDoneStatus::Error;
+        result.message = "Timed out while waiting for WebGPU queue work completion.";
+    }
+
+    return result;
+}
+
 void WebGpuContext::ReconfigureIfNeeded()
 {
     const int surfacePixelWidth = _surfaceProvider->GetSurfacePixelWidth();
@@ -181,11 +297,30 @@ void WebGpuContext::RequestAdapter()
 void WebGpuContext::RequestDevice()
 {
     wgpu::DeviceDescriptor descriptor{};
-    descriptor.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous,
-                                     [](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView) {});
-    descriptor.SetUncapturedErrorCallback([](const wgpu::Device&, wgpu::ErrorType, wgpu::StringView message) {
-        std::cerr << "WebGPU uncaptured error: " << ToString(message) << '\n';
-    });
+    descriptor.SetDeviceLostCallback(
+        wgpu::CallbackMode::AllowSpontaneous,
+        [](const wgpu::Device&, wgpu::DeviceLostReason, wgpu::StringView message, WebGpuContext* context) {
+            if (context == nullptr)
+            {
+                return;
+            }
+
+            context->_deviceLost = true;
+            context->_deviceLostMessage = ToString(message);
+        },
+        this);
+    descriptor.SetUncapturedErrorCallback(
+        [](const wgpu::Device&, wgpu::ErrorType, wgpu::StringView message, WebGpuContext* context) {
+            if (context == nullptr)
+            {
+                return;
+            }
+
+            context->_uncapturedError = true;
+            context->_uncapturedErrorMessage = ToString(message);
+            std::cerr << "WebGPU uncaptured error: " << context->_uncapturedErrorMessage << '\n';
+        },
+        this);
 
     DeviceRequestResult deviceRequestResult{};
     auto callback = [&deviceRequestResult](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message) {
@@ -227,6 +362,10 @@ void WebGpuContext::ReleaseResources() noexcept
     _surfaceHeight = 0;
     _surfaceFormat = wgpu::TextureFormat::Undefined;
     _alphaMode = wgpu::CompositeAlphaMode::Auto;
+    _deviceLost = false;
+    _uncapturedError = false;
+    _deviceLostMessage.clear();
+    _uncapturedErrorMessage.clear();
 }
 
 void WebGpuContext::ConfigureSurface(std::uint32_t width, std::uint32_t height)

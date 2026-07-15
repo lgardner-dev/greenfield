@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -28,6 +29,12 @@ constexpr int FirstPrintableAscii = 32;
 constexpr int LastPrintableAscii = 126;
 constexpr int AtlasTextureSize = 1024;
 constexpr int GlyphPadding = 1;
+
+double MillisecondsBetween(std::chrono::steady_clock::time_point start,
+                           std::chrono::steady_clock::time_point end)
+{
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
 
 class FreeTypeLibrary
 {
@@ -358,18 +365,38 @@ void WebGpuRenderer::SubmitVisualization(const VisualizationCommandList& visuali
 
 void WebGpuRenderer::EndFrame()
 {
+    _lastFrameDiagnostics = WebGpuFrameDiagnostics{
+        .enabled = _frameDiagnosticsEnabled,
+    };
+    const auto totalStart = std::chrono::steady_clock::now();
+
     if (_context == nullptr || !_context->IsInitialized())
     {
         return;
     }
 
+    auto stageStart = std::chrono::steady_clock::now();
     _context->ReconfigureIfNeeded();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.reconfigureMilliseconds += MillisecondsBetween(stageStart, std::chrono::steady_clock::now());
+    }
 
     wgpu::SurfaceTexture surfaceTexture{};
+    stageStart = std::chrono::steady_clock::now();
     _context->GetSurface().GetCurrentTexture(&surfaceTexture);
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.surfaceAcquireMilliseconds += MillisecondsBetween(stageStart, std::chrono::steady_clock::now());
+        _lastFrameDiagnostics.surfaceTextureStatus = surfaceTexture.status;
+    }
     if (!IsUsableSurfaceTextureStatus(surfaceTexture.status))
     {
         _context->ReconfigureIfNeeded();
+        if (_frameDiagnosticsEnabled)
+        {
+            _lastFrameDiagnostics.totalMilliseconds = MillisecondsBetween(totalStart, std::chrono::steady_clock::now());
+        }
         return;
     }
 
@@ -378,7 +405,19 @@ void WebGpuRenderer::EndFrame()
         throw std::runtime_error("WebGPU surface returned a null frame texture.");
     }
 
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.surfaceTextureAcquired = true;
+    }
+
+    stageStart = std::chrono::steady_clock::now();
     wgpu::TextureView textureView = surfaceTexture.texture.CreateView();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.textureViewCreationMilliseconds +=
+            MillisecondsBetween(stageStart, std::chrono::steady_clock::now());
+    }
+
     wgpu::RenderPassColorAttachment colorAttachment{};
     colorAttachment.view = textureView;
     colorAttachment.loadOp = wgpu::LoadOp::Clear;
@@ -390,17 +429,41 @@ void WebGpuRenderer::EndFrame()
         .colorAttachments = &colorAttachment,
     };
 
+    stageStart = std::chrono::steady_clock::now();
     wgpu::CommandEncoder commandEncoder = _context->GetDevice().CreateCommandEncoder();
     wgpu::RenderPassEncoder renderPass = commandEncoder.BeginRenderPass(&renderPassDescriptor);
     DrawRenderCommands(renderPass);
     renderPass.End();
-
     wgpu::CommandBuffer commandBuffer = commandEncoder.Finish();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.commandEncodingMilliseconds +=
+            MillisecondsBetween(stageStart, std::chrono::steady_clock::now());
+    }
+
+    stageStart = std::chrono::steady_clock::now();
     _context->GetQueue().Submit(1, &commandBuffer);
-    _context->GetSurface().Present();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.queueSubmissionMilliseconds +=
+            MillisecondsBetween(stageStart, std::chrono::steady_clock::now());
+    }
+
+    stageStart = std::chrono::steady_clock::now();
+    const wgpu::Status presentStatus = _context->GetSurface().Present();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.presentStatus = presentStatus;
+        _lastFrameDiagnostics.surfacePresentMilliseconds +=
+            MillisecondsBetween(stageStart, std::chrono::steady_clock::now());
+    }
 
     _completedFrameCommandCount = _submissionQueue.SubmittedRenderCommandCount();
     _completedFrameVisualizationCommandCount = _submissionQueue.SubmittedVisualizationCommandCount();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.totalMilliseconds = MillisecondsBetween(totalStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::SetDefaultFontPath(std::string fontPath)
@@ -434,6 +497,16 @@ std::size_t WebGpuRenderer::CompletedFrameVisualizationCommandCount() const noex
     return _completedFrameVisualizationCommandCount;
 }
 
+void WebGpuRenderer::SetFrameDiagnosticsEnabled(bool enabled) noexcept
+{
+    _frameDiagnosticsEnabled = enabled;
+}
+
+const WebGpuFrameDiagnostics& WebGpuRenderer::GetLastFrameDiagnostics() const noexcept
+{
+    return _lastFrameDiagnostics;
+}
+
 void WebGpuRenderer::EnsureRectanglePipeline()
 {
     const wgpu::TextureFormat surfaceFormat = _context->GetSurfaceFormat();
@@ -441,6 +514,8 @@ void WebGpuRenderer::EnsureRectanglePipeline()
     {
         return;
     }
+
+    const auto diagnosticStart = std::chrono::steady_clock::now();
 
     wgpu::ShaderSourceWGSL shaderSource{};
     shaderSource.code = GetRectangleShaderSource();
@@ -540,6 +615,11 @@ void WebGpuRenderer::EnsureRectanglePipeline()
 
     _rectanglePipeline = _context->GetDevice().CreateRenderPipeline(&pipelineDescriptor);
     _rectanglePipelineFormat = surfaceFormat;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.rectanglePipelineCreationMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::EnsureTextPipeline()
@@ -549,6 +629,8 @@ void WebGpuRenderer::EnsureTextPipeline()
     {
         return;
     }
+
+    const auto diagnosticStart = std::chrono::steady_clock::now();
 
     const std::array<wgpu::BindGroupLayoutEntry, 2> bindGroupLayoutEntries{{
         wgpu::BindGroupLayoutEntry{
@@ -655,6 +737,11 @@ void WebGpuRenderer::EnsureTextPipeline()
 
     _textPipeline = _context->GetDevice().CreateRenderPipeline(&pipelineDescriptor);
     _textPipelineFormat = surfaceFormat;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.textPipelineCreationMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::EnsureVisualizationPipeline()
@@ -664,6 +751,8 @@ void WebGpuRenderer::EnsureVisualizationPipeline()
     {
         return;
     }
+
+    const auto diagnosticStart = std::chrono::steady_clock::now();
 
     const wgpu::BindGroupLayoutEntry bindGroupLayoutEntry{
         .binding = 0,
@@ -785,6 +874,11 @@ void WebGpuRenderer::EnsureVisualizationPipeline()
 
     _visualizationPipeline = _context->GetDevice().CreateRenderPipeline(&pipelineDescriptor);
     _visualizationPipelineFormat = surfaceFormat;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.visualizationPipelineCreationMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 WebGpuRenderer::FontAtlas* WebGpuRenderer::GetOrCreateFontAtlas(float fontSize)
@@ -802,6 +896,8 @@ WebGpuRenderer::FontAtlas* WebGpuRenderer::GetOrCreateFontAtlas(float fontSize)
     {
         return &existingAtlas->second;
     }
+
+    const auto diagnosticStart = std::chrono::steady_clock::now();
 
     FreeTypeLibrary freeTypeLibrary;
     FreeTypeFace freeTypeFace(freeTypeLibrary.Get(), _defaultFontPath);
@@ -925,6 +1021,11 @@ WebGpuRenderer::FontAtlas* WebGpuRenderer::GetOrCreateFontAtlas(float fontSize)
     fontAtlas.bindGroup = _context->GetDevice().CreateBindGroup(&bindGroupDescriptor);
 
     auto [createdAtlas, wasCreated] = _fontAtlases.emplace(atlasPixelSize, std::move(fontAtlas));
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.fontAtlasCreationMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
     return wasCreated ? &createdAtlas->second : nullptr;
 }
 
@@ -1048,6 +1149,8 @@ void WebGpuRenderer::EnsureVertexBuffer(std::size_t requiredSize)
         return;
     }
 
+    const auto diagnosticStart = std::chrono::steady_clock::now();
+
     const wgpu::BufferDescriptor bufferDescriptor{
         .label = "Rectangle vertex buffer",
         .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
@@ -1056,6 +1159,11 @@ void WebGpuRenderer::EnsureVertexBuffer(std::size_t requiredSize)
 
     _rectangleVertexBuffer = _context->GetDevice().CreateBuffer(&bufferDescriptor);
     _rectangleVertexBufferSize = requiredSize;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.rectangleVertexBufferGrowthMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::EnsureTextVertexBuffer(std::size_t requiredSize)
@@ -1065,6 +1173,8 @@ void WebGpuRenderer::EnsureTextVertexBuffer(std::size_t requiredSize)
         return;
     }
 
+    const auto diagnosticStart = std::chrono::steady_clock::now();
+
     const wgpu::BufferDescriptor bufferDescriptor{
         .label = "Text vertex buffer",
         .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
@@ -1073,6 +1183,11 @@ void WebGpuRenderer::EnsureTextVertexBuffer(std::size_t requiredSize)
 
     _textVertexBuffer = _context->GetDevice().CreateBuffer(&bufferDescriptor);
     _textVertexBufferSize = requiredSize;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.textVertexBufferGrowthMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::EnsureVisualizationVertexBuffer(std::size_t requiredSize)
@@ -1082,6 +1197,8 @@ void WebGpuRenderer::EnsureVisualizationVertexBuffer(std::size_t requiredSize)
         return;
     }
 
+    const auto diagnosticStart = std::chrono::steady_clock::now();
+
     const wgpu::BufferDescriptor bufferDescriptor{
         .label = "Visualization vertex buffer",
         .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex,
@@ -1090,6 +1207,11 @@ void WebGpuRenderer::EnsureVisualizationVertexBuffer(std::size_t requiredSize)
 
     _visualizationVertexBuffer = _context->GetDevice().CreateBuffer(&bufferDescriptor);
     _visualizationVertexBufferSize = requiredSize;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.visualizationVertexBufferGrowthMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::EnsureVisualizationPointBuffer(std::size_t requiredSize)
@@ -1100,6 +1222,8 @@ void WebGpuRenderer::EnsureVisualizationPointBuffer(std::size_t requiredSize)
         return;
     }
 
+    const auto diagnosticStart = std::chrono::steady_clock::now();
+
     const wgpu::BufferDescriptor bufferDescriptor{
         .label = "Visualization polyline point buffer",
         .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Storage,
@@ -1109,6 +1233,11 @@ void WebGpuRenderer::EnsureVisualizationPointBuffer(std::size_t requiredSize)
     _visualizationPointBuffer = _context->GetDevice().CreateBuffer(&bufferDescriptor);
     _visualizationPointBufferSize = storageSize;
     _visualizationBindGroup = nullptr;
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.visualizationPointBufferGrowthMilliseconds +=
+            MillisecondsBetween(diagnosticStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::EnsureVisualizationBindGroup()
@@ -1139,7 +1268,14 @@ void WebGpuRenderer::EnsureVisualizationBindGroup()
 
 void WebGpuRenderer::DrawRenderCommands(wgpu::RenderPassEncoder& renderPass)
 {
+    const auto preparationStart = std::chrono::steady_clock::now();
     BuildRenderBatches();
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.renderCommandPreparationMilliseconds +=
+            MillisecondsBetween(preparationStart, std::chrono::steady_clock::now());
+    }
+
     WritePreparedVertexBuffers();
 
     ApplyFullFrameScissor(renderPass);
@@ -1361,6 +1497,8 @@ void WebGpuRenderer::AppendVisualizationVertices(const WebGpuPreparedVisualizati
 
 void WebGpuRenderer::WritePreparedVertexBuffers()
 {
+    const auto writeStart = std::chrono::steady_clock::now();
+
     if (!_rectangleVertices.empty())
     {
         EnsureRectanglePipeline();
@@ -1395,6 +1533,12 @@ void WebGpuRenderer::WritePreparedVertexBuffers()
         WriteVisualizationPointBuffer();
         EnsureVisualizationBindGroup();
     }
+
+    if (_frameDiagnosticsEnabled)
+    {
+        _lastFrameDiagnostics.vertexBufferWriteMilliseconds +=
+            MillisecondsBetween(writeStart, std::chrono::steady_clock::now());
+    }
 }
 
 void WebGpuRenderer::WriteVisualizationPointBuffer()
@@ -1404,10 +1548,16 @@ void WebGpuRenderer::WriteVisualizationPointBuffer()
 
     if (!_visualizationPoints.empty())
     {
+        const auto writeStart = std::chrono::steady_clock::now();
         _context->GetQueue().WriteBuffer(_visualizationPointBuffer,
                                          0,
                                          _visualizationPoints.data(),
                                          pointDataSize);
+        if (_frameDiagnosticsEnabled)
+        {
+            _lastFrameDiagnostics.visualizationPointBufferUploadMilliseconds +=
+                MillisecondsBetween(writeStart, std::chrono::steady_clock::now());
+        }
     }
 }
 

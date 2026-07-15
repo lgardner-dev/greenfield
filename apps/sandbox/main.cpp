@@ -1,16 +1,24 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
+
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_video.h>
 
 #include "engine/core/Color.h"
 #include "engine/core/Rect.h"
@@ -33,6 +41,7 @@ namespace
 {
 
 using namespace greenfield;
+using Clock = std::chrono::steady_clock;
 
 struct DashboardState
 {
@@ -77,12 +86,76 @@ struct SandboxOptions
     RendererBackendKind rendererBackendKind{RendererBackendKind::WebGpu};
     bool runHeadlessFast2D{false};
     bool profileFast2D{false};
+    bool profileWebGpuStartup{false};
+    int startupFrameCount{4};
+    std::uint64_t startupHoldMilliseconds{0};
+    std::string startupOutputPath{};
     std::string invalidRendererName{};
+    std::string invalidStartupOption{};
 };
 
 struct ControlRoomFrameRegions
 {
     Rect visualizationPlotBounds{};
+};
+
+struct WebGpuStartupProfileTimings
+{
+    double commandLineParsedMilliseconds{0.0};
+    double windowConstructionBeginMilliseconds{0.0};
+    double windowCreatedMilliseconds{0.0};
+    double startupFrameSubmissionBeginMilliseconds{0.0};
+    double startupFrameVisibleMilliseconds{0.0};
+    double startupSurfaceReleasedMilliseconds{0.0};
+    double webGpuInitializationBeginMilliseconds{0.0};
+    double webGpuContextReadyMilliseconds{0.0};
+    double adapterIdentityAvailableMilliseconds{0.0};
+    double rendererConstructionBeginMilliseconds{0.0};
+    double rendererConstructedMilliseconds{0.0};
+    double fontPathSelectedMilliseconds{0.0};
+    double commandGenerationBeginMilliseconds{0.0};
+    double commandGenerationCompleteMilliseconds{0.0};
+    double firstBeginFrameBeginMilliseconds{0.0};
+    double firstBeginFrameCompleteMilliseconds{0.0};
+    double initialUiSubmissionCompleteMilliseconds{0.0};
+    double visualizationSubmissionCompleteMilliseconds{0.0};
+    double overlayUiSubmissionCompleteMilliseconds{0.0};
+    double firstEndFrameBeginMilliseconds{0.0};
+    double firstEndFrameReturnMilliseconds{0.0};
+    double firstPresentCallCompletedMilliseconds{0.0};
+    double queueCompletionMilliseconds{0.0};
+    double confirmationFramesCompleteMilliseconds{0.0};
+    double processExitMilliseconds{0.0};
+};
+
+struct WebGpuStartupProfileResult
+{
+    bool success{false};
+    std::string failureStage{"none"};
+    std::string failureMessage{};
+    SandboxOptions options{};
+    std::string requestedMode{"webgpu"};
+    std::string currentVideoDriver{"none"};
+    std::string nativeSurfaceKind{"none"};
+    int surfacePixelWidth{0};
+    int surfacePixelHeight{0};
+    WebGpuAdapterIdentity adapterIdentity{};
+    bool classifiedHardware{false};
+    bool classifiedSwiftShader{false};
+    std::size_t renderCommandCount{0};
+    std::size_t visualizationCommandCount{0};
+    std::size_t overlayCommandCount{0};
+    std::size_t completedRenderCommandCount{0};
+    std::size_t completedVisualizationCommandCount{0};
+    std::size_t confirmationFrameCount{0};
+    double confirmationFrameMeanMilliseconds{0.0};
+    WebGpuFrameDiagnostics firstFrameDiagnostics{};
+    WebGpuQueueWorkDoneResult queueCompletion{};
+    bool deviceLost{false};
+    bool uncapturedError{false};
+    std::string deviceLostMessage{};
+    std::string uncapturedErrorMessage{};
+    WebGpuStartupProfileTimings timings{};
 };
 
 struct Fast2DProfileStageSamples
@@ -399,6 +472,148 @@ double MillisecondsBetween(std::chrono::steady_clock::time_point start,
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
+double MillisecondsSince(Clock::time_point epoch)
+{
+    return MillisecondsBetween(epoch, Clock::now());
+}
+
+std::string ToLower(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+std::string QuoteForMachineOutput(std::string_view value)
+{
+    std::string result;
+    result.reserve(value.size() + 2U);
+    result.push_back('"');
+    for (char character : value)
+    {
+        if (character == '"' || character == '\\')
+        {
+            result.push_back('\\');
+        }
+        result.push_back(character);
+    }
+    result.push_back('"');
+    return result;
+}
+
+std::string ToString(NativeSurfaceKind surfaceKind)
+{
+    switch (surfaceKind)
+    {
+    case NativeSurfaceKind::Wayland:
+        return "wayland";
+    case NativeSurfaceKind::X11:
+        return "x11";
+    case NativeSurfaceKind::None:
+    default:
+        return "none";
+    }
+}
+
+std::string ToString(wgpu::SurfaceGetCurrentTextureStatus status)
+{
+    switch (status)
+    {
+    case wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal:
+        return "success_optimal";
+    case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
+        return "success_suboptimal";
+    case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
+        return "timeout";
+    case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
+        return "outdated";
+    case wgpu::SurfaceGetCurrentTextureStatus::Lost:
+        return "lost";
+    case wgpu::SurfaceGetCurrentTextureStatus::Error:
+    default:
+        return "error";
+    }
+}
+
+std::string ToString(wgpu::Status status)
+{
+    switch (status)
+    {
+    case wgpu::Status::Success:
+        return "success";
+    case wgpu::Status::Error:
+    default:
+        return "error";
+    }
+}
+
+std::string ToString(wgpu::QueueWorkDoneStatus status)
+{
+    switch (status)
+    {
+    case wgpu::QueueWorkDoneStatus::Success:
+        return "success";
+    case wgpu::QueueWorkDoneStatus::CallbackCancelled:
+        return "callback_cancelled";
+    case wgpu::QueueWorkDoneStatus::Error:
+    default:
+        return "error";
+    }
+}
+
+std::string GetCurrentSdlVideoDriverName()
+{
+    const char* driverName = SDL_GetCurrentVideoDriver();
+    return driverName == nullptr ? "none" : std::string(driverName);
+}
+
+bool ContainsSwiftShaderIdentity(const WebGpuAdapterIdentity& identity)
+{
+    const std::string combined =
+        ToLower(identity.vendor + " " + identity.architecture + " " + identity.device + " " + identity.description);
+    return combined.find("swiftshader") != std::string::npos ||
+           (identity.vendorId == 0x1AE0U && identity.deviceId == 0xC0DEU);
+}
+
+bool ContainsKnownSoftwareIdentity(const WebGpuAdapterIdentity& identity)
+{
+    const std::string combined =
+        ToLower(identity.vendor + " " + identity.architecture + " " + identity.device + " " + identity.description);
+    return combined.find("swiftshader") != std::string::npos || combined.find("lavapipe") != std::string::npos ||
+           combined.find("llvmpipe") != std::string::npos || combined.find("software rasterizer") != std::string::npos ||
+           combined.find("warp") != std::string::npos;
+}
+
+bool IsHardwareAdapterIdentity(const WebGpuAdapterIdentity& identity)
+{
+    return identity.adapterType != "cpu" && !ContainsKnownSoftwareIdentity(identity);
+}
+
+std::optional<int> ParseNonNegativeInteger(std::string_view text)
+{
+    try
+    {
+        std::size_t parsedCharacterCount = 0;
+        const int value = std::stoi(std::string{text}, &parsedCharacterCount);
+        if (parsedCharacterCount != text.size() || value < 0)
+        {
+            return std::nullopt;
+        }
+
+        return value;
+    }
+    catch (const std::exception&)
+    {
+        return std::nullopt;
+    }
+}
+
+std::uint64_t QueueWaitTimeoutNanoseconds()
+{
+    return 15ULL * 1000ULL * 1000ULL * 1000ULL;
+}
+
 std::optional<SandboxWindowSize> ParseWindowSize(std::string_view text)
 {
     const std::size_t separatorPosition = text.find('x');
@@ -431,6 +646,10 @@ SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
     constexpr std::string_view HeadlessFlag{"--headless"};
     constexpr std::string_view DiagnosticFlag{"--diagnostic"};
     constexpr std::string_view ProfileFast2DFlag{"--profile-fast2d"};
+    constexpr std::string_view ProfileWebGpuStartupFlag{"--profile-webgpu-startup"};
+    constexpr std::string_view StartupFrameCountPrefix{"--startup-frame-count="};
+    constexpr std::string_view StartupHoldMillisecondsPrefix{"--startup-hold-ms="};
+    constexpr std::string_view StartupOutputPrefix{"--startup-output="};
     SandboxOptions sandboxOptions{};
 
     for (int argumentIndex = 1; argumentIndex < argumentCount; ++argumentIndex)
@@ -473,6 +692,46 @@ SandboxOptions GetSandboxOptions(int argumentCount, char* argumentValues[])
         if (argument == ProfileFast2DFlag)
         {
             sandboxOptions.profileFast2D = true;
+            continue;
+        }
+
+        if (argument == ProfileWebGpuStartupFlag)
+        {
+            sandboxOptions.profileWebGpuStartup = true;
+            continue;
+        }
+
+        if (argument.starts_with(StartupFrameCountPrefix))
+        {
+            const std::optional<int> parsedFrameCount =
+                ParseNonNegativeInteger(argument.substr(StartupFrameCountPrefix.size()));
+            if (!parsedFrameCount.has_value())
+            {
+                sandboxOptions.invalidStartupOption = std::string{argument};
+                continue;
+            }
+
+            sandboxOptions.startupFrameCount = parsedFrameCount.value();
+            continue;
+        }
+
+        if (argument.starts_with(StartupHoldMillisecondsPrefix))
+        {
+            const std::optional<int> parsedHoldMilliseconds =
+                ParseNonNegativeInteger(argument.substr(StartupHoldMillisecondsPrefix.size()));
+            if (!parsedHoldMilliseconds.has_value())
+            {
+                sandboxOptions.invalidStartupOption = std::string{argument};
+                continue;
+            }
+
+            sandboxOptions.startupHoldMilliseconds = static_cast<std::uint64_t>(parsedHoldMilliseconds.value());
+            continue;
+        }
+
+        if (argument.starts_with(StartupOutputPrefix))
+        {
+            sandboxOptions.startupOutputPath = std::string{argument.substr(StartupOutputPrefix.size())};
             continue;
         }
     }
@@ -1015,6 +1274,177 @@ void SubmitControlRoomFrame(WebGpuRenderer& renderer,
     renderer.Submit(overlayCommands);
 }
 
+std::string MakeStageLine(const char* name, double milliseconds)
+{
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(3)
+           << "GREENFIELD_STARTUP_STAGE"
+           << " name=" << name
+           << " elapsed_ms=" << milliseconds;
+    return stream.str();
+}
+
+std::vector<std::string> BuildStartupProfileOutput(const WebGpuStartupProfileResult& result)
+{
+    const WebGpuStartupProfileTimings& timings = result.timings;
+    const double startupToFirstPresentMilliseconds =
+        timings.firstPresentCallCompletedMilliseconds - timings.startupFrameVisibleMilliseconds;
+    const double contextToFirstPresentMilliseconds =
+        timings.firstPresentCallCompletedMilliseconds - timings.webGpuContextReadyMilliseconds;
+    const double commandGenerationMilliseconds =
+        timings.commandGenerationCompleteMilliseconds - timings.commandGenerationBeginMilliseconds;
+    const double rendererConstructionMilliseconds =
+        timings.rendererConstructedMilliseconds - timings.rendererConstructionBeginMilliseconds;
+    const double firstEndFrameMilliseconds = timings.firstEndFrameReturnMilliseconds - timings.firstEndFrameBeginMilliseconds;
+
+    std::vector<std::string> lines;
+    lines.push_back(MakeStageLine("process_epoch", 0.0));
+    lines.push_back(MakeStageLine("command_line_parsed", timings.commandLineParsedMilliseconds));
+    lines.push_back(MakeStageLine("window_construction_begin", timings.windowConstructionBeginMilliseconds));
+    lines.push_back(MakeStageLine("window_created", timings.windowCreatedMilliseconds));
+    lines.push_back(MakeStageLine("startup_frame_submission_begin", timings.startupFrameSubmissionBeginMilliseconds));
+    lines.push_back(MakeStageLine("startup_frame_visible", timings.startupFrameVisibleMilliseconds));
+    lines.push_back(MakeStageLine("startup_surface_released", timings.startupSurfaceReleasedMilliseconds));
+    lines.push_back(MakeStageLine("webgpu_initialization_begin", timings.webGpuInitializationBeginMilliseconds));
+    lines.push_back(MakeStageLine("webgpu_context_ready", timings.webGpuContextReadyMilliseconds));
+    lines.push_back(MakeStageLine("adapter_identity_available", timings.adapterIdentityAvailableMilliseconds));
+    lines.push_back(MakeStageLine("font_path_selected", timings.fontPathSelectedMilliseconds));
+    lines.push_back(MakeStageLine("renderer_construction_begin", timings.rendererConstructionBeginMilliseconds));
+    lines.push_back(MakeStageLine("renderer_constructed", timings.rendererConstructedMilliseconds));
+    lines.push_back(MakeStageLine("first_renderer_begin_frame_begin", timings.firstBeginFrameBeginMilliseconds));
+    lines.push_back(MakeStageLine("first_renderer_begin_frame_complete", timings.firstBeginFrameCompleteMilliseconds));
+    lines.push_back(MakeStageLine("first_control_room_command_generation_begin", timings.commandGenerationBeginMilliseconds));
+    lines.push_back(MakeStageLine("first_control_room_command_generation_complete",
+                                  timings.commandGenerationCompleteMilliseconds));
+    lines.push_back(MakeStageLine("initial_ui_submission_complete", timings.initialUiSubmissionCompleteMilliseconds));
+    lines.push_back(MakeStageLine("visualization_submission_complete", timings.visualizationSubmissionCompleteMilliseconds));
+    lines.push_back(MakeStageLine("overlay_ui_submission_complete", timings.overlayUiSubmissionCompleteMilliseconds));
+    lines.push_back(MakeStageLine("first_renderer_end_frame_begin", timings.firstEndFrameBeginMilliseconds));
+    lines.push_back(MakeStageLine("first_renderer_end_frame_return", timings.firstEndFrameReturnMilliseconds));
+    lines.push_back(MakeStageLine("first_present_call_completed", timings.firstPresentCallCompletedMilliseconds));
+    lines.push_back(MakeStageLine("queue_completion", timings.queueCompletionMilliseconds));
+    lines.push_back(MakeStageLine("confirmation_frames_complete", timings.confirmationFramesCompleteMilliseconds));
+    lines.push_back(MakeStageLine("process_exit", timings.processExitMilliseconds));
+
+    const WebGpuAdapterIdentity& identity = result.adapterIdentity;
+    std::ostringstream adapterLine;
+    adapterLine << "GREENFIELD_STARTUP_ADAPTER"
+                << " requested_mode=" << result.requestedMode
+                << " sdl_video_driver=" << result.currentVideoDriver
+                << " native_surface_kind=" << result.nativeSurfaceKind
+                << " vendor=" << QuoteForMachineOutput(identity.vendor)
+                << " architecture=" << QuoteForMachineOutput(identity.architecture)
+                << " name=" << QuoteForMachineOutput(identity.device)
+                << " description=" << QuoteForMachineOutput(identity.description)
+                << " backend=" << identity.backendType
+                << " adapter_type=" << identity.adapterType
+                << " vendor_id=" << identity.vendorId
+                << " device_id=" << identity.deviceId
+                << " feature_count=" << identity.featureCount
+                << " max_texture_2d=" << identity.maxTextureDimension2D
+                << " subgroup_min_size=" << identity.subgroupMinSize
+                << " subgroup_max_size=" << identity.subgroupMaxSize
+                << " classified_hardware=" << (result.classifiedHardware ? "true" : "false")
+                << " classified_swiftshader=" << (result.classifiedSwiftShader ? "true" : "false");
+    lines.push_back(adapterLine.str());
+
+    const WebGpuFrameDiagnostics& diagnostics = result.firstFrameDiagnostics;
+    std::ostringstream endFrameLine;
+    endFrameLine << std::fixed << std::setprecision(3)
+                 << "GREENFIELD_STARTUP_END_FRAME"
+                 << " diagnostics_enabled=" << (diagnostics.enabled ? "true" : "false")
+                 << " surface_acquired=" << (diagnostics.surfaceTextureAcquired ? "true" : "false")
+                 << " surface_status=" << ToString(diagnostics.surfaceTextureStatus)
+                 << " present_status=" << ToString(diagnostics.presentStatus)
+                 << " total_ms=" << diagnostics.totalMilliseconds
+                 << " reconfigure_ms=" << diagnostics.reconfigureMilliseconds
+                 << " surface_acquire_ms=" << diagnostics.surfaceAcquireMilliseconds
+                 << " texture_view_ms=" << diagnostics.textureViewCreationMilliseconds
+                 << " command_preparation_ms=" << diagnostics.renderCommandPreparationMilliseconds
+                 << " rectangle_pipeline_ms=" << diagnostics.rectanglePipelineCreationMilliseconds
+                 << " text_pipeline_ms=" << diagnostics.textPipelineCreationMilliseconds
+                 << " visualization_pipeline_ms=" << diagnostics.visualizationPipelineCreationMilliseconds
+                 << " font_atlas_ms=" << diagnostics.fontAtlasCreationMilliseconds
+                 << " rectangle_buffer_growth_ms=" << diagnostics.rectangleVertexBufferGrowthMilliseconds
+                 << " text_buffer_growth_ms=" << diagnostics.textVertexBufferGrowthMilliseconds
+                 << " visualization_buffer_growth_ms=" << diagnostics.visualizationVertexBufferGrowthMilliseconds
+                 << " visualization_point_buffer_growth_ms=" << diagnostics.visualizationPointBufferGrowthMilliseconds
+                 << " vertex_buffer_write_ms=" << diagnostics.vertexBufferWriteMilliseconds
+                 << " visualization_point_upload_ms=" << diagnostics.visualizationPointBufferUploadMilliseconds
+                 << " command_encoding_ms=" << diagnostics.commandEncodingMilliseconds
+                 << " queue_submit_ms=" << diagnostics.queueSubmissionMilliseconds
+                 << " surface_present_ms=" << diagnostics.surfacePresentMilliseconds;
+    lines.push_back(endFrameLine.str());
+
+    std::ostringstream resultLine;
+    resultLine << std::fixed << std::setprecision(3)
+               << "GREENFIELD_STARTUP_RESULT"
+               << " requested_mode=" << result.requestedMode
+               << " success=" << (result.success ? "true" : "false")
+               << " failure_stage=" << result.failureStage
+               << " failure_message=" << QuoteForMachineOutput(result.failureMessage)
+               << " sdl_video_driver=" << result.currentVideoDriver
+               << " native_surface_kind=" << result.nativeSurfaceKind
+               << " surface_width=" << result.surfacePixelWidth
+               << " surface_height=" << result.surfacePixelHeight
+               << " render_command_count=" << result.renderCommandCount
+               << " visualization_command_count=" << result.visualizationCommandCount
+               << " overlay_command_count=" << result.overlayCommandCount
+               << " completed_render_command_count=" << result.completedRenderCommandCount
+               << " completed_visualization_command_count=" << result.completedVisualizationCommandCount
+               << " confirmation_frame_count=" << result.confirmationFrameCount
+               << " confirmation_frame_mean_ms=" << result.confirmationFrameMeanMilliseconds
+               << " startup_frame_visible_ms=" << timings.startupFrameVisibleMilliseconds
+               << " context_ready_ms=" << timings.webGpuContextReadyMilliseconds
+               << " renderer_constructed_ms=" << timings.rendererConstructedMilliseconds
+               << " first_commands_ready_ms=" << timings.commandGenerationCompleteMilliseconds
+               << " first_full_frame_end_ms=" << timings.firstEndFrameReturnMilliseconds
+               << " first_present_call_completed_ms=" << timings.firstPresentCallCompletedMilliseconds
+               << " queue_completion_ms=" << timings.queueCompletionMilliseconds
+               << " startup_visible_to_first_present_ms=" << startupToFirstPresentMilliseconds
+               << " context_ready_to_first_present_ms=" << contextToFirstPresentMilliseconds
+               << " command_generation_ms=" << commandGenerationMilliseconds
+               << " renderer_construction_ms=" << rendererConstructionMilliseconds
+               << " first_end_frame_ms=" << firstEndFrameMilliseconds
+               << " queue_status=" << ToString(result.queueCompletion.status)
+               << " queue_message=" << QuoteForMachineOutput(result.queueCompletion.message)
+               << " surface_status=" << ToString(diagnostics.surfaceTextureStatus)
+               << " present_status=" << ToString(diagnostics.presentStatus)
+               << " device_lost=" << (result.deviceLost ? "true" : "false")
+               << " device_lost_message=" << QuoteForMachineOutput(result.deviceLostMessage)
+               << " uncaptured_error=" << (result.uncapturedError ? "true" : "false")
+               << " uncaptured_error_message=" << QuoteForMachineOutput(result.uncapturedErrorMessage);
+    lines.push_back(resultLine.str());
+
+    return lines;
+}
+
+void PrintAndPersistStartupProfileOutput(const WebGpuStartupProfileResult& result)
+{
+    const std::vector<std::string> lines = BuildStartupProfileOutput(result);
+    for (const std::string& line : lines)
+    {
+        std::cout << line << '\n';
+    }
+
+    if (result.options.startupOutputPath.empty())
+    {
+        return;
+    }
+
+    std::ofstream outputFile{result.options.startupOutputPath};
+    if (!outputFile)
+    {
+        std::cerr << "Failed to open startup output path: " << result.options.startupOutputPath << '\n';
+        return;
+    }
+
+    for (const std::string& line : lines)
+    {
+        outputFile << line << '\n';
+    }
+}
+
 int RunFast2DDiagnosticSandbox(const SandboxWindowSize& initialWindowSize)
 {
     std::cout << "Running Fast2D diagnostic renderer path.\n";
@@ -1241,6 +1671,185 @@ int RunFast2DSandbox(const SandboxWindowSize& initialWindowSize)
     return 0;
 }
 
+double RenderConfirmationControlRoomFrame(SdlWindow& window,
+                                          WebGpuRenderer& renderer,
+                                          UiContext& uiContext,
+                                          DashboardState& dashboardState)
+{
+    const auto frameStart = Clock::now();
+
+    window.PollEvents();
+    renderer.BeginFrame();
+
+    const Layout layout =
+        MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
+    const ControlRoomFrameRegions frameRegions =
+        BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
+    const auto& renderCommands = uiContext.EndFrame();
+    SubmitControlRoomFrame(renderer, renderCommands, frameRegions);
+    renderer.EndFrame();
+
+    return MillisecondsBetween(frameStart, Clock::now());
+}
+
+WebGpuStartupProfileResult RunWebGpuStartupProfileSandbox(const SandboxOptions& sandboxOptions,
+                                                          Clock::time_point epoch,
+                                                          double commandLineParsedMilliseconds)
+{
+    WebGpuStartupProfileResult result{};
+    result.options = sandboxOptions;
+    result.timings.commandLineParsedMilliseconds = commandLineParsedMilliseconds;
+
+    try
+    {
+        result.timings.windowConstructionBeginMilliseconds = MillisecondsSince(epoch);
+        SdlWindow window{"Greenfield Sandbox", sandboxOptions.windowSize.width, sandboxOptions.windowSize.height};
+        result.timings.windowCreatedMilliseconds = MillisecondsSince(epoch);
+        result.currentVideoDriver = GetCurrentSdlVideoDriverName();
+        result.surfacePixelWidth = window.GetSurfacePixelWidth();
+        result.surfacePixelHeight = window.GetSurfacePixelHeight();
+
+        {
+            SdlStartupPresenter startupPresenter{window};
+            result.timings.startupFrameSubmissionBeginMilliseconds = MillisecondsSince(epoch);
+            startupPresenter.DrawFrame();
+            result.timings.startupFrameVisibleMilliseconds = MillisecondsSince(epoch);
+
+            window.PollEvents();
+            if (window.ShouldClose())
+            {
+                result.failureStage = "startup_poll";
+                result.failureMessage = "Window closed during startup frame polling.";
+                result.timings.processExitMilliseconds = MillisecondsSince(epoch);
+                return result;
+            }
+        }
+        result.timings.startupSurfaceReleasedMilliseconds = MillisecondsSince(epoch);
+
+        const NativeSurfaceDescriptor nativeSurface = window.GetNativeSurfaceDescriptor();
+        result.nativeSurfaceKind = ToString(nativeSurface.kind);
+        if (nativeSurface.kind == NativeSurfaceKind::None)
+        {
+            result.failureStage = "native_surface";
+            result.failureMessage = "SDL window did not expose Wayland or X11 native surface handles.";
+            result.timings.processExitMilliseconds = MillisecondsSince(epoch);
+            return result;
+        }
+
+        result.timings.webGpuInitializationBeginMilliseconds = MillisecondsSince(epoch);
+        WebGpuContext webGpuContext{window};
+        result.timings.webGpuContextReadyMilliseconds = MillisecondsSince(epoch);
+
+        result.adapterIdentity = webGpuContext.GetAdapterIdentity();
+        result.classifiedSwiftShader = ContainsSwiftShaderIdentity(result.adapterIdentity);
+        result.classifiedHardware = IsHardwareAdapterIdentity(result.adapterIdentity);
+        result.timings.adapterIdentityAvailableMilliseconds = MillisecondsSince(epoch);
+
+        const std::string defaultFontPath = FindDefaultFontPath();
+        result.timings.fontPathSelectedMilliseconds = MillisecondsSince(epoch);
+        if (defaultFontPath.empty())
+        {
+            std::cerr << "No default font found. Text commands will be recorded, but text will not render.\n";
+        }
+        else
+        {
+            std::cout << "Using sandbox font: " << defaultFontPath << '\n';
+        }
+
+        result.timings.rendererConstructionBeginMilliseconds = MillisecondsSince(epoch);
+        WebGpuRenderer renderer{webGpuContext, defaultFontPath};
+        renderer.SetFrameDiagnosticsEnabled(true);
+        result.timings.rendererConstructedMilliseconds = MillisecondsSince(epoch);
+
+        UiContext uiContext;
+        ConfigureControlRoomStyle(uiContext);
+        DashboardState dashboardState{};
+
+        result.timings.firstBeginFrameBeginMilliseconds = MillisecondsSince(epoch);
+        renderer.BeginFrame();
+        result.timings.firstBeginFrameCompleteMilliseconds = MillisecondsSince(epoch);
+
+        result.timings.commandGenerationBeginMilliseconds = MillisecondsSince(epoch);
+        const Layout layout =
+            MakeSandboxLayout(static_cast<float>(window.GetWidth()), static_cast<float>(window.GetHeight()));
+        const ControlRoomFrameRegions frameRegions =
+            BuildControlRoomFrame(uiContext, layout, dashboardState, window.GetInputState());
+        const auto& renderCommands = uiContext.EndFrame();
+        VisualizationCommandList visualizationCommands =
+            BuildResponseTraceVisualizationCommands(frameRegions.visualizationPlotBounds);
+        RenderCommandList overlayCommands = BuildResponseTraceOverlayCommands(frameRegions.visualizationPlotBounds);
+        result.renderCommandCount = renderCommands.Size();
+        result.visualizationCommandCount = visualizationCommands.Size();
+        result.overlayCommandCount = overlayCommands.Size();
+        result.timings.commandGenerationCompleteMilliseconds = MillisecondsSince(epoch);
+
+        renderer.Submit(renderCommands);
+        result.timings.initialUiSubmissionCompleteMilliseconds = MillisecondsSince(epoch);
+        renderer.SubmitVisualization(visualizationCommands);
+        result.timings.visualizationSubmissionCompleteMilliseconds = MillisecondsSince(epoch);
+        renderer.Submit(overlayCommands);
+        result.timings.overlayUiSubmissionCompleteMilliseconds = MillisecondsSince(epoch);
+
+        result.timings.firstEndFrameBeginMilliseconds = MillisecondsSince(epoch);
+        renderer.EndFrame();
+        result.timings.firstEndFrameReturnMilliseconds = MillisecondsSince(epoch);
+        result.timings.firstPresentCallCompletedMilliseconds = result.timings.firstEndFrameReturnMilliseconds;
+        result.firstFrameDiagnostics = renderer.GetLastFrameDiagnostics();
+        result.completedRenderCommandCount = renderer.CompletedFrameCommandCount();
+        result.completedVisualizationCommandCount = renderer.CompletedFrameVisualizationCommandCount();
+
+        result.queueCompletion = webGpuContext.WaitForQueueWorkDone(QueueWaitTimeoutNanoseconds());
+        result.timings.queueCompletionMilliseconds = MillisecondsSince(epoch);
+
+        double confirmationTotalMilliseconds = 0.0;
+        for (int frameIndex = 0; frameIndex < sandboxOptions.startupFrameCount && !window.ShouldClose(); ++frameIndex)
+        {
+            confirmationTotalMilliseconds +=
+                RenderConfirmationControlRoomFrame(window, renderer, uiContext, dashboardState);
+            ++result.confirmationFrameCount;
+        }
+        if (result.confirmationFrameCount > 0U)
+        {
+            result.confirmationFrameMeanMilliseconds =
+                confirmationTotalMilliseconds / static_cast<double>(result.confirmationFrameCount);
+        }
+        result.timings.confirmationFramesCompleteMilliseconds = MillisecondsSince(epoch);
+
+        const auto holdStart = Clock::now();
+        while (!window.ShouldClose() &&
+               std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - holdStart).count() <
+                   static_cast<long long>(sandboxOptions.startupHoldMilliseconds))
+        {
+            window.PollEvents();
+            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        }
+
+        result.deviceLost = webGpuContext.IsDeviceLost();
+        result.uncapturedError = webGpuContext.HasUncapturedError();
+        result.deviceLostMessage = webGpuContext.GetDeviceLostMessage();
+        result.uncapturedErrorMessage = webGpuContext.GetUncapturedErrorMessage();
+
+        const bool surfaceWasAcquired = result.firstFrameDiagnostics.surfaceTextureAcquired;
+        const bool presentSucceeded = result.firstFrameDiagnostics.presentStatus == wgpu::Status::Success;
+        const bool queueSucceeded = result.queueCompletion.status == wgpu::QueueWorkDoneStatus::Success;
+        result.success = surfaceWasAcquired && presentSucceeded && queueSucceeded && !result.deviceLost &&
+                         !result.uncapturedError;
+        if (!result.success && result.failureStage == "none")
+        {
+            result.failureStage = "first_full_frame";
+            result.failureMessage = "First full Control Room frame did not complete cleanly.";
+        }
+    }
+    catch (const std::exception& exception)
+    {
+        result.failureStage = "exception";
+        result.failureMessage = exception.what();
+    }
+
+    result.timings.processExitMilliseconds = MillisecondsSince(epoch);
+    return result;
+}
+
 int RunWebGpuSandbox(const SandboxWindowSize& initialWindowSize)
 {
     SdlWindow window{"Greenfield Sandbox", initialWindowSize.width, initialWindowSize.height};
@@ -1300,15 +1909,24 @@ int RunWebGpuSandbox(const SandboxWindowSize& initialWindowSize)
 
 int main(int argumentCount, char* argumentValues[])
 {
+    const Clock::time_point processEpoch = Clock::now();
+
     try
     {
         std::cout << "Starting Greenfield sandbox\n";
 
         const SandboxOptions sandboxOptions = GetSandboxOptions(argumentCount, argumentValues);
+        const double commandLineParsedMilliseconds = MillisecondsSince(processEpoch);
         if (!sandboxOptions.invalidRendererName.empty())
         {
             std::cerr << "Unknown renderer backend '" << sandboxOptions.invalidRendererName
                       << "'. Expected --renderer=webgpu or --renderer=fast2d.\n";
+            return 1;
+        }
+
+        if (!sandboxOptions.invalidStartupOption.empty())
+        {
+            std::cerr << "Invalid startup profiling option '" << sandboxOptions.invalidStartupOption << "'.\n";
             return 1;
         }
 
@@ -1318,11 +1936,37 @@ int main(int argumentCount, char* argumentValues[])
             return 1;
         }
 
+        if (sandboxOptions.profileWebGpuStartup && sandboxOptions.rendererBackendKind != RendererBackendKind::WebGpu)
+        {
+            std::cerr << "--profile-webgpu-startup requires --renderer=webgpu.\n";
+            return 1;
+        }
+
+        if (sandboxOptions.profileWebGpuStartup && sandboxOptions.runHeadlessFast2D)
+        {
+            std::cerr << "--profile-webgpu-startup cannot be combined with --headless or --diagnostic.\n";
+            return 1;
+        }
+
+        if (sandboxOptions.profileWebGpuStartup && sandboxOptions.profileFast2D)
+        {
+            std::cerr << "--profile-webgpu-startup cannot be combined with --profile-fast2d.\n";
+            return 1;
+        }
+
         if (sandboxOptions.profileFast2D && sandboxOptions.runHeadlessFast2D)
         {
             std::cerr << "--profile-fast2d runs the visible Fast2D path and cannot be combined with --headless or "
                          "--diagnostic.\n";
             return 1;
+        }
+
+        if (sandboxOptions.profileWebGpuStartup)
+        {
+            const WebGpuStartupProfileResult result =
+                RunWebGpuStartupProfileSandbox(sandboxOptions, processEpoch, commandLineParsedMilliseconds);
+            PrintAndPersistStartupProfileOutput(result);
+            return result.success ? 0 : 1;
         }
 
         if (sandboxOptions.rendererBackendKind == RendererBackendKind::Fast2D)

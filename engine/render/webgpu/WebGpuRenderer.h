@@ -19,6 +19,32 @@ namespace greenfield
 
 class WebGpuContext;
 
+struct WebGpuFrameDiagnostics
+{
+    bool enabled{false};
+    bool surfaceTextureAcquired{false};
+    wgpu::SurfaceGetCurrentTextureStatus surfaceTextureStatus{wgpu::SurfaceGetCurrentTextureStatus::Error};
+    wgpu::Status presentStatus{wgpu::Status::Error};
+    double totalMilliseconds{0.0};
+    double reconfigureMilliseconds{0.0};
+    double surfaceAcquireMilliseconds{0.0};
+    double textureViewCreationMilliseconds{0.0};
+    double renderCommandPreparationMilliseconds{0.0};
+    double rectanglePipelineCreationMilliseconds{0.0};
+    double textPipelineCreationMilliseconds{0.0};
+    double visualizationPipelineCreationMilliseconds{0.0};
+    double fontAtlasCreationMilliseconds{0.0};
+    double rectangleVertexBufferGrowthMilliseconds{0.0};
+    double textVertexBufferGrowthMilliseconds{0.0};
+    double visualizationVertexBufferGrowthMilliseconds{0.0};
+    double visualizationPointBufferGrowthMilliseconds{0.0};
+    double vertexBufferWriteMilliseconds{0.0};
+    double visualizationPointBufferUploadMilliseconds{0.0};
+    double commandEncodingMilliseconds{0.0};
+    double queueSubmissionMilliseconds{0.0};
+    double surfacePresentMilliseconds{0.0};
+};
+
 class WebGpuRenderer final : public IRenderer
 {
 public:
@@ -34,6 +60,8 @@ public:
     [[nodiscard]] std::size_t CompletedFrameCommandCount() const noexcept;
     [[nodiscard]] std::size_t SubmittedVisualizationCommandCount() const noexcept;
     [[nodiscard]] std::size_t CompletedFrameVisualizationCommandCount() const noexcept;
+    void SetFrameDiagnosticsEnabled(bool enabled) noexcept;
+    [[nodiscard]] const WebGpuFrameDiagnostics& GetLastFrameDiagnostics() const noexcept;
 
 private:
     struct RectangleVertex
@@ -198,6 +226,8 @@ private:
     std::uint64_t _visualizationPointBufferSize{0};
     std::size_t _completedFrameCommandCount{0};
     std::size_t _completedFrameVisualizationCommandCount{0};
+    bool _frameDiagnosticsEnabled{false};
+    WebGpuFrameDiagnostics _lastFrameDiagnostics{};
 };
 
 } // namespace greenfield
