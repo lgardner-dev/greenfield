@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import os
 import shutil
 import subprocess
@@ -94,6 +95,32 @@ class InstallerTests(unittest.TestCase):
     def _current(self) -> Path:
         return self.prefix / "lib" / "greenfield-runner" / "current"
 
+    def _isolated_runner_environment(self) -> dict[str, str]:
+        root = self.base / "test-runner"
+        state = root / "state"
+        return {
+            **os.environ,
+            "GREENFIELD_ROOT": str(root),
+            "GREENFIELD_REPOSITORY": str(self.source_root),
+            "GREENFIELD_RUNS": str(root / "runs"),
+            "GREENFIELD_WORKTREES": str(root / "worktrees"),
+            "GREENFIELD_STATE": str(state),
+            "GREENFIELD_LOCK": str(state / "agent.lock"),
+        }
+
+    def _run_wrapper(
+        self,
+        wrapper: Path,
+        arguments: list[str],
+        *,
+        cwd: Path = Path("/tmp"),
+    ) -> subprocess.CompletedProcess[str]:
+        return self._run(
+            [str(wrapper), *arguments],
+            cwd=cwd,
+            environment=self._isolated_runner_environment(),
+        )
+
     def test_fresh_install_has_importable_release_and_rendered_unit(self) -> None:
         completed = self._install("test-one")
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -112,7 +139,7 @@ class InstallerTests(unittest.TestCase):
         wrapper = self.prefix / "bin" / "greenfield-agent"
         self.assertTrue(wrapper.is_file())
         self.assertTrue(os.access(wrapper, os.X_OK))
-        help_result = self._run([str(wrapper), "--help"], cwd=Path("/tmp"))
+        help_result = self._run_wrapper(wrapper, ["--help"])
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
         self.assertIn("greenfield-agent", help_result.stdout)
 
@@ -136,7 +163,7 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("User=", rendered)
         self.assertNotIn("Group=", rendered)
 
-        doctor = self._run([str(wrapper), "doctor"], cwd=Path("/tmp"))
+        doctor = self._run_wrapper(wrapper, ["doctor"])
         self.assertIn("PASS  Installed version: test-one", doctor.stdout)
         self.assertIn("INFO  Service unit: present", doctor.stdout)
 
@@ -212,9 +239,31 @@ class InstallerTests(unittest.TestCase):
         completed = self._install("test-one")
         self.assertEqual(completed.returncode, 0, completed.stderr)
         wrapper = self.prefix / "bin" / "greenfield-agent"
-        result = self._run([str(wrapper), "run", "missing-task"], cwd=Path("/tmp"))
+        result = self._run_wrapper(wrapper, ["run", "missing-task"])
         self.assertEqual(result.returncode, 1)
         self.assertIn("task does not exist", result.stderr)
+
+    def test_wrapper_uses_isolated_lock_while_outer_runner_lock_is_held(self) -> None:
+        completed = self._install("test-one")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        wrapper = self.prefix / "bin" / "greenfield-agent"
+
+        outer_lock = self.base / "outer-runner" / "state" / "agent.lock"
+        outer_lock.parent.mkdir(parents=True)
+        with outer_lock.open("a+") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            environment = self._isolated_runner_environment()
+            self.assertNotEqual(Path(environment["GREENFIELD_LOCK"]), outer_lock)
+            result = self._run(
+                [str(wrapper), "run", "missing-task"],
+                cwd=Path("/tmp"),
+                environment=environment,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("task does not exist", result.stderr)
+        self.assertNotIn("another Greenfield task is already running", result.stderr)
+        self.assertTrue(Path(environment["GREENFIELD_LOCK"]).is_file())
 
 
 if __name__ == "__main__":
