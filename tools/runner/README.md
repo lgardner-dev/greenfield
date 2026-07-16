@@ -147,7 +147,9 @@ Run the wrapper directly from any current working directory:
 /path/to/greenfield/tools/runner/greenfield-agent doctor
 ```
 
-Task IDs must match `^[A-Za-z0-9][A-Za-z0-9._-]*$`. `create` copies its inputs;
+Task IDs must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` and must also be valid as the
+final component of the runner's `agent/TASK_ID` Git branch. In particular, they
+must not contain `..`, end with `.`, or end with `.lock`. `create` copies its inputs;
 subsequent edits to the original prompt or validation file do not affect the task.
 The initial Codex timeout is 14,400 seconds. The initial reasoning effort is
 `high`. The optional validation script runs through `bash` from the task worktree

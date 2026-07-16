@@ -59,9 +59,14 @@ class RunnerInterrupted(RunnerError):
 def validate_task_id(task_id: str) -> str:
     """Reject task identifiers that are unsafe as directory and ref components."""
 
-    if not TASK_ID_PATTERN.fullmatch(task_id):
+    if (
+        not TASK_ID_PATTERN.fullmatch(task_id)
+        or ".." in task_id
+        or task_id.endswith(".")
+        or task_id.endswith(".lock")
+    ):
         raise RunnerError(
-            "invalid task ID; expected ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            "invalid task ID; expected a safe directory name and Git branch component"
         )
     return task_id
 

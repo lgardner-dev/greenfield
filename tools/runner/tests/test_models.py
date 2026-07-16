@@ -13,7 +13,16 @@ class TaskIdTests(unittest.TestCase):
                 self.assertEqual(validate_task_id(task_id), task_id)
 
     def test_rejects_empty_and_malformed_task_ids(self) -> None:
-        for task_id in ("", "-starts-wrong", ".starts-wrong", "has space", "slash/name"):
+        for task_id in (
+            "",
+            "-starts-wrong",
+            ".starts-wrong",
+            "has space",
+            "slash/name",
+            "ends.",
+            "has..dots",
+            "branch.lock",
+        ):
             with self.subTest(task_id=task_id):
                 with self.assertRaises(RunnerError):
                     validate_task_id(task_id)
