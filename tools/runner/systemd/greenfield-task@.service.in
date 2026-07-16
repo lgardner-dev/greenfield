@@ -1,0 +1,24 @@
+[Unit]
+Description=Greenfield automation task %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PREFIX@
+ExecStart=@PREFIX@/bin/greenfield-agent run %i
+TimeoutStartSec=6h
+KillMode=mixed
+UMask=0027
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+Environment=HOME=/home/greenfield-agent
+Environment=PATH=/home/greenfield-agent/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=GREENFIELD_ROOT=@PREFIX@
+Environment=GREENFIELD_REPOSITORY=@PREFIX@/repos/greenfield
+Environment=VCPKG_ROOT=@PREFIX@/cache/vcpkg
+Environment=VCPKG_DEFAULT_BINARY_CACHE=@PREFIX@/cache/vcpkg-binary
+Environment=VCPKG_DOWNLOADS=@PREFIX@/cache/vcpkg-downloads
+Environment=CCACHE_DIR=@PREFIX@/cache/ccache

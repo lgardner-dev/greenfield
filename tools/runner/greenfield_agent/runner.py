@@ -240,6 +240,7 @@ class GreenfieldRunner:
             print(f"{task_id:<{width}}  {state}", file=output)
 
     def doctor(self, output: TextIO) -> bool:
+        self._print_installation_status(output)
         checks: list[tuple[str, bool, str]] = []
         python_supported = sys.version_info >= (3, 10)
         checks.append(
@@ -310,6 +311,38 @@ class GreenfieldRunner:
         for label, passed, detail in checks:
             print(f"{'PASS' if passed else 'FAIL'}  {label}: {detail}", file=output)
         return all(passed for _, passed, _ in checks)
+
+    def _print_installation_status(self, output: TextIO) -> None:
+        package_path = Path(__file__).resolve().parent
+        release_path = package_path.parent
+        version_path = release_path / "VERSION"
+        metadata_path = release_path / "INSTALL-METADATA"
+        installed_release = version_path.is_file() and metadata_path.is_file()
+
+        if installed_release:
+            version = version_path.read_text(encoding="utf-8").strip()
+            print(f"PASS  Installed version: {version or 'empty VERSION'}", file=output)
+            print(f"PASS  Installation metadata: {metadata_path}", file=output)
+        else:
+            print(f"INFO  Runner package: source checkout at {package_path}", file=output)
+
+        wrapper = os.environ.get("GREENFIELD_AGENT_WRAPPER") or shutil.which("greenfield-agent")
+        if wrapper:
+            print(f"INFO  Wrapper path: {wrapper}", file=output)
+        else:
+            print("INFO  Wrapper path: not found in the environment", file=output)
+
+        unit_directory = Path(
+            os.environ.get("GREENFIELD_AGENT_SYSTEMD_UNIT_DIR", "/etc/systemd/user")
+        )
+        unit_path = unit_directory / "greenfield-task@.service"
+        if unit_path.is_file():
+            print(f"INFO  Service unit: present at {unit_path}", file=output)
+        else:
+            print(
+                f"INFO  Service unit: not present at {unit_path} (optional outside systemd)",
+                file=output,
+            )
 
     def _prepare_and_run_codex(
         self, paths: TaskPaths, metadata: TaskMetadata
