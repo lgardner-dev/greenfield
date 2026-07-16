@@ -4,6 +4,15 @@ Greenfield is an open-source, C++20, SDK-first creative application engine. The 
 
 This document describes the current layer boundaries. It should help contributors add features without accidentally coupling UI, platform, and renderer code.
 
+The restricted unattended graphics launcher and durable visual-review workflow
+are documented separately in
+[`phase2-restricted-graphics-launcher.md`](phase2-restricted-graphics-launcher.md).
+That architecture is an automation/platform boundary, not a C++ engine or
+renderer feature: it keeps the Python runner authoritative, requires human
+approval for visible work, makes hardware WebGPU the primary native path,
+prohibits native Wayland SwiftShader, and excludes deprecated Fast2D
+from Phase 2 capture and visual review.
+
 ## SDK-First Architecture
 
 Greenfield is organized around the Greenfield SDK: the reusable runtime and library developers build applications with.

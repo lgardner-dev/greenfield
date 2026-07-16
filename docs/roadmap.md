@@ -167,9 +167,33 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 - Current dependency-light profile: `headless-fast2d` excludes the SDL/WebGPU/sandbox targets and avoids SDL3, Dawn/WebGPU, FreeType, and vcpkg while validating core/UI/Fast2D source-tree use.
 - Implemented Fast2D foundation: `greenfield_render_fast2d`, limited to renderer-neutral command consumption, backend-local preparation, clipped CPU filled-rectangle rasterization, source-over alpha blending, hard-edged rectangular and rounded borders/fills, intersected nested clips, stable first visible SDL raster presentation, and deferred text.
 - Current Fast2D sandbox status: opt-in visibly interactive through SDL CPU raster presentation, with the one-frame diagnostic/headless path still available through `--renderer=fast2d --headless` or `--renderer=fast2d --diagnostic`.
-- Future default baseline direction: Greenfield-owned Fast2D after later composition and presentation work.
+- Fast2D is deprecated as a product/default renderer direction. It remains an
+  opt-in diagnostic/legacy path only; it must not become the default renderer
+  and is excluded from Phase 2 screenshots and visual review.
 - WebGPU: backend-specific accelerated renderer direction.
 - Skia: possible later optional backend, not the current foundation.
+
+## Phase 2: Restricted Graphics Review
+
+Phase 2 is architecture-only in this slice. The proposed workflow uses a typed
+Unix-domain-socket broker running as `greenfield-gfx`, root-owned allowlisted
+launch profiles, a validated dedicated graphical session, bounded process and
+capture lifecycles, and immutable review bundles. The Python runner remains the
+durable owner of worktrees, processes, validation, graphics requests, artifacts,
+task states, and human-review audit history. Future Slack and Hermes adapters
+remain transport/orchestration layers and must not become shell or state-write
+interfaces.
+
+Hardware WebGPU is the primary native renderer. Native Wayland SwiftShader
+execution is prohibited; any future SwiftShader fallback requires dedicated
+X11 infrastructure and explicit profile/owner approval. Every visible change
+stops for human visual review. See
+[`docs/phase2-restricted-graphics-launcher.md`](phase2-restricted-graphics-launcher.md)
+for the threat model, protocol boundary, state machine, review package, and
+implementation slices.
+
+No Phase 2 production code, launcher, service, socket, Slack integration,
+Hermes integration, or graphical automation is part of this architecture slice.
 
 ## Not In Scope Yet
 

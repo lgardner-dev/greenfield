@@ -53,6 +53,17 @@ The Greenfield SDK is the reusable runtime and library that developers use to bu
 - A composition root may wire concrete host platform and renderer backend targets such as SDL, WebGPU, or Fast2D. Reusable SDK/UI/runtime/surface/export vocabulary should stay independent from SDL, Dawn/WebGPU, and FreeType.
 - Hot reload is not a core v0.1 requirement; fast incremental build UX matters more.
 
+## Automation and Visual Review
+
+Phase 2 architecture for restricted unattended graphics execution, immutable
+visual-review bundles, and future Slack/Hermes integration is documented in
+[`docs/phase2-restricted-graphics-launcher.md`](docs/phase2-restricted-graphics-launcher.md).
+The proposed workflow keeps the Python runner as the durable source of truth and
+requires explicit human approval for every visible UI change. Hardware WebGPU is
+the primary native renderer; native Wayland SwiftShader is prohibited, and
+Fast2D remains deprecated and is excluded from Phase 2 screenshot
+capture and visual review.
+
 ## Not In Scope Yet
 
 The current renderer-selection and Fast2D presentation work is intentionally narrow. It is not a compositor and does not implement mixed-surface composition. Fast2D text rasterization, rich text shaping, shared text/font architecture, antialiasing, vector paths, transforms, gradients, visual regression CI, full WebGPU visual parity, Studio implementation, CLI implementation, Canvas2D, Scene3D, shader/editor surfaces, node graphs, retained-mode UI, hot reload, Python bindings, and Skia integration are not in scope yet.
