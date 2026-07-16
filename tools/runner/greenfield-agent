@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+runner_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -n "${PYTHONPATH:-}" ]; then
+    export PYTHONPATH="${runner_dir}:${PYTHONPATH}"
+else
+    export PYTHONPATH="${runner_dir}"
+fi
+exec python3 -m greenfield_agent "$@"

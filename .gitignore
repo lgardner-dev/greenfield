@@ -35,3 +35,18 @@ bin/
 lib/
 Testing/
 .cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/

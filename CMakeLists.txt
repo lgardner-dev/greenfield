@@ -123,6 +123,20 @@ if(GREENFIELD_BUILD_DEVELOPER_PROFILE)
 endif()
 
 if(BUILD_TESTING)
+    find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+
+    add_test(
+        NAME greenfield_python_runner_tests
+        COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+                -s "${PROJECT_SOURCE_DIR}/tools/runner/tests"
+                -v
+    )
+    set_tests_properties(
+        greenfield_python_runner_tests
+        PROPERTIES ENVIRONMENT
+                   "PYTHONPATH=${PROJECT_SOURCE_DIR}/tools/runner;PYTHONDONTWRITEBYTECODE=1"
+    )
+
     add_test(
         NAME greenfield_dependency_boundary_tests
         COMMAND "${CMAKE_COMMAND}"
