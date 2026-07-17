@@ -175,7 +175,11 @@ M6E does not finish Fast2D and does not implement rich text shaping, shared text
 
 ## Phase 2: Restricted Graphics Review
 
-Phase 2 is architecture-only in this slice. The proposed workflow uses a typed
+Phase 2 remains daemon- and graphics-execution-free in this slice. Phase 2B1
+adds the dependency-light `tools/graphics_broker` protocol foundation: strict
+version-one request parsing, bounded framing, peer-credential and UID policy
+primitives, structured errors, and an acceptance-only idempotency ledger. The
+proposed future workflow uses a typed
 Unix-domain-socket broker running as `greenfield-gfx`, root-owned allowlisted
 launch profiles, a validated dedicated graphical session, bounded process and
 capture lifecycles, and immutable review bundles. The Python runner remains the
@@ -192,8 +196,8 @@ stops for human visual review. See
 for the threat model, protocol boundary, state machine, review package, and
 implementation slices.
 
-No Phase 2 production code, launcher, service, socket, Slack integration,
-Hermes integration, or graphical automation is part of this architecture slice.
+No broker daemon, launcher, service, socket binding, Slack integration, Hermes
+integration, or graphical automation is part of this slice.
 
 ## Not In Scope Yet
 

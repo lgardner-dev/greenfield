@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+package_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -n "${PYTHONPATH:-}" ]; then
+    export PYTHONPATH="${package_dir}:${PYTHONPATH}"
+else
+    export PYTHONPATH="${package_dir}"
+fi
+export PYTHONDONTWRITEBYTECODE=1
+
+exec python3 -m unittest discover \
+    -s "${package_dir}/tests" \
+    -p 'test_*.py' \
+    -v "$@"
