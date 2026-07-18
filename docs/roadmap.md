@@ -199,6 +199,25 @@ implementation slices.
 No broker daemon, launcher, service, socket binding, Slack integration, Hermes
 integration, or graphical automation is part of this slice.
 
+## Automation Platform Extraction
+
+The automation platform should be extracted into a standalone reusable
+`software-factory` repository immediately after Phase 2B1, before graphics
+session, GitHub, Slack, Hermes, or deeper Greenfield-specific integration adds
+coupling. Greenfield is the first reference consumer and owns its project
+configuration and validation/review policy; the standalone factory owns
+durable execution, Git/worktree isolation, process lifecycle, artifacts, and
+the graphics-broker protocol boundary.
+
+The proposed contract, repository structure, `.factory/` configuration,
+project-scoped identity and isolation model, migration stages E0-E8, history
+strategy, compatibility wrapper, and parity acceptance criteria are documented
+in [`software-factory-extraction.md`](software-factory-extraction.md).
+
+This is an architecture and migration direction only. It does not add a second
+sandbox, change the current runner or graphics broker, implement installation
+migration, or enable GitHub, Slack, Hermes, or graphics-session execution.
+
 ## Not In Scope Yet
 
 - Full renderer composition
