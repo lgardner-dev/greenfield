@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+export PYTHONDONTWRITEBYTECODE=1
+exec python3 -m unittest discover \
+    -s "${script_directory}/tests" \
+    -p 'test_*.py' \
+    -v "$@"

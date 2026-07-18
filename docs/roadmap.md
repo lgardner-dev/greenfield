@@ -214,6 +214,14 @@ project-scoped identity and isolation model, migration stages E0-E8, history
 strategy, compatibility wrapper, and parity acceptance criteria are documented
 in [`software-factory-extraction.md`](software-factory-extraction.md).
 
+E1 preparation is now limited to a reviewed retained-path allowlist,
+repeatable local `git-filter-repo` extraction and audit scripts, disposable
+fixture tests, and the provenance plan in
+[`software-factory-provenance-plan.md`](software-factory-provenance-plan.md).
+It does not create or contact a remote, add package metadata, change runtime
+behavior, or alter the Greenfield checkout, installed runner, services, state,
+or artifacts.
+
 This is an architecture and migration direction only. It does not add a second
 sandbox, change the current runner or graphics broker, implement installation
 migration, or enable GitHub, Slack, Hermes, or graphics-session execution.
