@@ -220,7 +220,11 @@ fixture tests, and the provenance plan in
 [`software-factory-provenance-plan.md`](software-factory-provenance-plan.md).
 It does not create or contact a remote, add package metadata, change runtime
 behavior, or alter the Greenfield checkout, installed runner, services, state,
-or artifacts.
+or artifacts. E2 preparation adds the deterministic local bootstrap candidate
+workflow, its exact generated-provenance allowlist, post-provenance audit
+guardrail, and review procedure in
+[`software-factory-e2-bootstrap.md`](software-factory-e2-bootstrap.md); it
+still does not configure a destination remote or push history.
 
 This is an architecture and migration direction only. It does not add a second
 sandbox, change the current runner or graphics broker, implement installation

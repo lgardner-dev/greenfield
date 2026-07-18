@@ -2,8 +2,13 @@
 set -euo pipefail
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+test_directory="${script_directory}/tests"
+[[ -d "$test_directory" ]] || {
+    printf 'run-tests: test directory is missing: %s\n' "$test_directory" >&2
+    exit 1
+}
 export PYTHONDONTWRITEBYTECODE=1
 exec python3 -m unittest discover \
-    -s "${script_directory}/tests" \
+    -s "$test_directory" \
     -p 'test_*.py' \
     -v "$@"

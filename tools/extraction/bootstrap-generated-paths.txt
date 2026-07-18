@@ -1,0 +1,5 @@
+docs/provenance/README.md
+docs/provenance/manifest.json
+docs/provenance/original-to-filtered-commit-map.txt
+docs/provenance/retained-files.txt
+docs/provenance/filtered-history-audit.txt

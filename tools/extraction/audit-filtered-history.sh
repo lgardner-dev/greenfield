@@ -6,19 +6,49 @@ allowlist_file="${script_directory}/retained-paths.txt"
 large_blob_threshold_bytes=1048576
 
 usage() {
-    printf 'Usage: %s FILTERED_REPOSITORY\n' "$(basename -- "$0")" >&2
+    printf 'Usage: %s FILTERED_REPOSITORY [GENERATED_PATH_ALLOWLIST]\n' "$(basename -- "$0")" >&2
 }
 
-if (( $# != 1 )); then
+if (( $# < 1 || $# > 2 )); then
     usage
     exit 2
 fi
 
 repository=$1
+generated_allowlist_file=${2:-}
+if [[ "$repository" == -* || "$generated_allowlist_file" == -* ]]; then
+    usage
+    exit 2
+fi
 [[ -f "$allowlist_file" ]] || {
     printf 'audit-filtered-history: allowlist is missing: %s\n' "$allowlist_file" >&2
     exit 1
 }
+
+declare -a generated_paths=()
+if [[ -n "$generated_allowlist_file" ]]; then
+    [[ -f "$generated_allowlist_file" ]] || {
+        printf 'audit-filtered-history: generated-path allowlist is missing: %s\n' "$generated_allowlist_file" >&2
+        exit 1
+    }
+    while IFS= read -r generated_path || [[ -n "$generated_path" ]]; do
+        [[ -n "$generated_path" ]] || {
+            printf 'audit-filtered-history: generated-path allowlist contains an empty record\n' >&2
+            exit 1
+        }
+        case "$generated_path" in
+            /*|./*|../*|*/../*|*/./*|*//*|*/|.|..|*'?'*|*'*'*|*'['*|*']'*|*'\\'*)
+                printf 'audit-filtered-history: generated paths must be exact relative file paths: %s\n' "$generated_path" >&2
+                exit 1
+                ;;
+        esac
+        generated_paths+=("$generated_path")
+    done < "$generated_allowlist_file"
+    (( ${#generated_paths[@]} > 0 )) || {
+        printf 'audit-filtered-history: generated-path allowlist is empty\n' >&2
+        exit 1
+    }
+fi
 
 git -C "$repository" rev-parse --git-dir >/dev/null 2>&1 || {
     printf 'audit-filtered-history: not a Git repository: %s\n' "$repository" >&2
@@ -48,6 +78,15 @@ is_retained_path() {
     return 1
 }
 
+is_generated_path() {
+    local candidate=$1
+    local generated_path
+    for generated_path in "${generated_paths[@]}"; do
+        [[ "$candidate" == "$generated_path" ]] && return 0
+    done
+    return 1
+}
+
 declare -A all_files=()
 declare -A path_violations=()
 declare -A credential_files=()
@@ -58,6 +97,8 @@ declare -A large_files=()
 declare -A binary_files=()
 declare -A scanned_blobs=()
 declare -A missing_retained_paths=()
+declare -A generated_path_violations=()
+declare -A generated_evidence_mismatches=()
 
 scan_directory=$(mktemp -d "${TMPDIR:-/tmp}/software-factory-audit.XXXXXX")
 cleanup() {
@@ -73,7 +114,12 @@ fi
 
 for commit in "${commits[@]}"; do
     while IFS= read -r -d '' path; do
-        if ! is_retained_path "$path"; then
+        if is_retained_path "$path"; then
+            :
+        elif [[ -n "$generated_allowlist_file" ]] && is_generated_path "$path" && [[ "$commit" != "$head_commit" ]]; then
+            generated_path_violations["$path"]="$commit"
+            continue
+        elif ! is_generated_path "$path"; then
             path_violations["$path"]=1
             continue
         fi
@@ -121,6 +167,25 @@ for commit in "${commits[@]}"; do
     done < <(git -C "$repository" ls-tree -r --name-only -z "$commit")
 done
 
+if [[ -n "$generated_allowlist_file" ]]; then
+    for generated_path in "${generated_paths[@]}"; do
+        if ! git -C "$repository" cat-file -e "${head_commit}:${generated_path}" 2>/dev/null; then
+            generated_path_violations["$generated_path"]='missing-at-head'
+        elif [[ "$(git -C "$repository" cat-file -t "${head_commit}:${generated_path}")" != 'blob' ]]; then
+            generated_path_violations["$generated_path"]='not-a-file-at-head'
+        fi
+    done
+
+    commit_map_path=$(git -C "$repository" rev-parse --git-path filter-repo/commit-map)
+    [[ "$commit_map_path" == /* ]] || commit_map_path="${repository}/${commit_map_path}"
+    generated_map_path='docs/provenance/original-to-filtered-commit-map.txt'
+    if is_generated_path "$generated_map_path"; then
+        if [[ ! -f "$commit_map_path" ]] || ! cmp -s "${repository}/${generated_map_path}" "$commit_map_path"; then
+            generated_evidence_mismatches["$generated_map_path"]='does-not-match-filter-repo-commit-map'
+        fi
+    fi
+fi
+
 head_files=()
 while IFS= read -r -d '' path; do
     head_files+=("$path")
@@ -154,11 +219,21 @@ print_map() {
     done < <(printf '%s\n' "${!map_reference[@]}" | LC_ALL=C sort)
 }
 
-printf 'FILTERED_HEAD=%s\n' "$head_commit"
+if [[ -n "$generated_allowlist_file" ]]; then
+    # The generated audit is committed in the same commit it describes. A
+    # symbolic head keeps its bytes independent of that commit's object ID.
+    printf 'FILTERED_HEAD=HEAD\n'
+else
+    printf 'FILTERED_HEAD=%s\n' "$head_commit"
+fi
 printf 'REF_COUNT=%s\n' "$(git -C "$repository" for-each-ref --format='%(refname)' | wc -l | tr -d ' ')"
 while IFS= read -r ref; do
     [[ -n "$ref" ]] || continue
-    printf 'REF=%s\n' "$ref"
+    if [[ -n "$generated_allowlist_file" ]]; then
+        printf 'REF=%s\n' "${ref%% *}"
+    else
+        printf 'REF=%s\n' "$ref"
+    fi
 done < <(git -C "$repository" for-each-ref --format='%(refname) %(objectname)')
 printf 'ROOT_COUNT=%s\n' "$(git -C "$repository" rev-list --all "$head_commit" --max-parents=0 | wc -l | tr -d ' ')"
 while IFS= read -r root; do
@@ -190,6 +265,8 @@ while IFS= read -r path; do
 done < <(printf '%s\n' "${head_files[@]}" | LC_ALL=C sort)
 
 print_map PATH_VIOLATION path_violations
+print_map GENERATED_PATH_VIOLATION generated_path_violations
+print_map GENERATED_EVIDENCE_MISMATCH generated_evidence_mismatches
 print_map MISSING_RETAINED_PATH missing_retained_paths
 print_map CREDENTIAL_FILE credential_files
 print_map ENV_FILE env_files
@@ -205,7 +282,7 @@ while IFS= read -r remote; do
 done < <(git -C "$repository" remote)
 
 failure=0
-if (( ${#path_violations[@]} != 0 || ${#missing_retained_paths[@]} != 0 )); then
+if (( ${#path_violations[@]} != 0 || ${#generated_path_violations[@]} != 0 || ${#generated_evidence_mismatches[@]} != 0 || ${#missing_retained_paths[@]} != 0 )); then
     failure=1
 fi
 if (( ${#env_files[@]} != 0 || ${#private_key_files[@]} != 0 || ${#token_files[@]} != 0 )); then
